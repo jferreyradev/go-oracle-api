@@ -58,6 +58,19 @@ Si la variable está vacía, cualquier IP puede acceder (solo con el token).
     ```sh
     go run main.go
     ```
+    Puedes indicar qué archivo de variables de entorno usar y el puerto de escucha de las siguientes formas:
+
+    - Archivo .env por argumento:
+       ```sh
+       go run main.go filename.env
+       ```
+    - Puerto por argumento (después del archivo .env):
+       ```sh
+       go run main.go otro.env 9090
+       ```
+    - Por defecto:
+       Si no especificas nada, se usará `.env` y el puerto 8080.
+
 2. Los endpoints estarán disponibles en `http://localhost:8080`.
 
 
@@ -137,122 +150,3 @@ Este proyecto fue desarrollado y verificado por [jferreyradev](https://github.co
 ## Licencia
 MIT
 
-## Especificar archivo .env y puerto
-
-Puedes indicar qué archivo de variables de entorno usar y el puerto de escucha de las siguientes formas:
-
-- **Archivo .env por argumento:**
-   ```sh
-   go run main.go otro.env
-   ```
-- **Archivo .env por variable de entorno:**
-   ```sh
-   set ENV_FILE=otro.env && go run main.go
-   ```
-- **Puerto por variable de entorno:**
-   ```sh
-   set PORT=9090 && go run main.go
-   ```
-- **Puerto por argumento (después del archivo .env):**
-   ```sh
-   go run main.go otro.env 9090
-   ```
-- **Por defecto:**
-   Si no especificas nada, se usará `.env` y el puerto 8080.
-## ¿Qué problema soluciona este microservicio?
-
-En muchos entornos de desarrollo, diferentes aplicaciones necesitan acceder a datos almacenados en bases de datos Oracle. Sin embargo, integrar directamente con Oracle suele requerir la instalación de drivers o librerías específicos en cada entorno, lo que complica la interoperabilidad y el despliegue.
-
-Este microservicio resuelve ese problema actuando como un puente seguro y ligero entre una base de datos Oracle y otras aplicaciones, exponiendo endpoints HTTP para consultas y modificaciones. Así, cualquier sistema capaz de realizar peticiones HTTP/JSON puede interactuar con Oracle sin necesidad de instalar librerías, drivers ni configuraciones adicionales de Oracle en el cliente.
-
-Además, permite la integración de APIs o servicios desarrollados en cualquier herramienta o lenguaje, ya que la comunicación se realiza mediante HTTP estándar, facilitando la interoperabilidad entre sistemas heterogéneos.
-
-**Ventajas principales:**
-- Acceso centralizado a Oracle mediante HTTP.
-- No requiere que los sistemas consumidores instalen librerías de Oracle.
-- Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
-- Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
-- Facilita la integración de sistemas modernos (microservicios, aplicaciones web/móviles, otros servicios) con bases de datos Oracle.
-- Seguridad mediante autenticación de token y restricción opcional por IP.
-- Reduce el riesgo de exposición de credenciales o la base de datos a múltiples sistemas.
-
-En resumen, este microservicio facilita la interoperabilidad y modernización de sistemas que dependen de Oracle, proporcionando una capa de acceso API que puede ser utilizada por cualquier tecnología capaz de realizar peticiones HTTP.
-
-# Go Oracle API Microservicio
-
-Este microservicio en Go expone endpoints HTTP para consultar y modificar una base de datos Oracle, pensado como puente entre Oracle y otras APIs.
-
-## Requisitos
-- Go 1.18+
-- Acceso a una base de datos Oracle
-
-## Instalación
-1. Clona el repositorio o copia los archivos en tu proyecto.
-2. Instala las dependencias:
-   ```sh
-   go mod tidy
-   ```
-3. Crea un archivo `.env` en la raíz con el siguiente contenido:
-   ```env
-   ORACLE_USER=usuario
-   ORACLE_PASSWORD=contraseña
-   ORACLE_HOST=localhost
-   ORACLE_PORT=1521
-   ORACLE_SERVICE=servicio_o_sid
-   API_TOKEN=tu_token_seguro
-   ```
-
-## Configuración de IPs permitidas
-
-Puedes restringir el acceso solo a ciertas IPs agregando en tu `.env`:
-
-```
-API_ALLOWED_IPS=192.168.1.10,192.168.1.20
-```
-
-Si la variable está vacía, cualquier IP puede acceder (solo con el token).
-
-## Uso
-1. Inicia el microservicio:
-   ```sh
-   go run main.go
-   ```
-2. Los endpoints estarán disponibles en `http://localhost:8080`.
-
-### Endpoints
-- `GET /ping` — Verifica la salud del servicio.
-- `GET /query` — Ejecuta un ejemplo de consulta (`SELECT sysdate FROM dual`).
-- `POST /exec` — Ejecuta una consulta enviada en el cuerpo (JSON):
-  ```json
-  {
-    "query": "SELECT * FROM tu_tabla"
-  }
-  ```
-  - Para `INSERT`, `UPDATE` o `DELETE`, devuelve `{ "rows_affected": n }`.
-  - Para `SELECT`, devuelve un array de objetos JSON.
-
-#### Autenticación
-Todos los endpoints requieren el header:
-```
-Authorization: Bearer <API_TOKEN>
-```
-
-## Pruebas
-Puedes ejecutar los tests locales y remotos con:
-```sh
-go test
-```
-
-- Para test remoto, define la variable de entorno `API_REMOTE_HOST` (ejemplo: `http://192.168.1.100:8080`).
-
-## Notas de seguridad
-- El endpoint `/exec` ejecuta SQL recibido, úsalo solo en entornos controlados.
-- No expongas este microservicio a internet sin protección adicional.
-- Usa la variable `API_ALLOWED_IPS` para restringir el acceso solo a IPs de confianza.
-
-## Créditos y autoría
-
-Este proyecto fue desarrollado y verificado por [jferreyradev](https://github.com/jferreyradev/jferreyradev) , con ayuda de GitHub Copilot para la generación y revisión de código.
-
-## Licencia
-MIT
