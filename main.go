@@ -16,8 +16,15 @@ import (
 var db *sql.DB
 
 func main() {
-	// Cargar variables de entorno desde .env si existe
-	_ = godotenv.Load()
+	http.HandleFunc("/upload", authMiddleware(uploadHandler))
+	// ...resto de la función main...
+	envFile := ".env"
+	if len(os.Args) > 1 && os.Args[1] != "" {
+		envFile = os.Args[1]
+	} else if customEnv := os.Getenv("ENV_FILE"); customEnv != "" {
+		envFile = customEnv
+	}
+	_ = godotenv.Load(envFile)
 
 	user := os.Getenv("ORACLE_USER")
 	password := os.Getenv("ORACLE_PASSWORD")
@@ -37,8 +44,66 @@ func main() {
 	http.HandleFunc("/query", authMiddleware(queryHandler))
 	http.HandleFunc("/exec", authMiddleware(execHandler))
 	http.HandleFunc("/procedure", authMiddleware(procedureHandler))
-	log.Println("Microservicio escuchando en :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+
+	port = os.Getenv("PORT")
+	if port == "" {
+		if len(os.Args) > 2 && os.Args[2] != "" {
+			port = os.Args[2]
+		} else {
+			port = "8080"
+		}
+	}
+	log.Printf("Microservicio escuchando en :%s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+// uploadHandler recibe archivos vía multipart/form-data y los guarda en una tabla BLOB
+func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+	err := r.ParseMultipartForm(100 << 20) // 100 MB máximo
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error al leer el archivo: " + err.Error()})
+		return
+	}
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Archivo no recibido: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	// Leer el archivo en memoria (para archivos muy grandes, usar streaming a la BD)
+	data := make([]byte, handler.Size)
+	_, err = file.Read(data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error leyendo archivo: " + err.Error()})
+		return
+	}
+
+	// Metadatos opcionales
+	nombre := handler.Filename
+	descripcion := r.FormValue("descripcion")
+
+	// Insertar en la tabla (ejemplo: archivos(id, nombre, descripcion, contenido BLOB))
+	_, err = db.Exec("INSERT INTO archivos (nombre, descripcion, contenido) VALUES (:1, :2, :3)", nombre, descripcion, data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error guardando en BD: " + err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "nombre": nombre})
 }
 
 // procedureHandler ejecuta un procedimiento almacenado con parámetros IN y OUT

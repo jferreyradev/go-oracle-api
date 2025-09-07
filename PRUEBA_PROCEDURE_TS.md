@@ -1,3 +1,38 @@
+## 8. Especificar el puerto del microservicio
+
+Puedes indicar el puerto de escucha de tres formas:
+
+- **Por variable de entorno:**
+  ```sh
+  set PORT=9090 && go run main.go
+  ```
+- **Por argumento (después del archivo .env):**
+  ```sh
+  go run main.go otro.env 9090
+  ```
+- **Por defecto:**
+  Si no especificas nada, usará el puerto 8080.
+## 7. Especificar el archivo .env a usar
+
+Puedes indicar qué archivo de variables de entorno usar de dos formas:
+
+- **Por argumento al ejecutar:**
+  
+  ```sh
+  bun run main.ts otro.env
+  # o
+  deno run --allow-net main.ts otro.env
+  # o
+  go run main.go otro.env
+  ```
+
+- **Por variable de entorno:**
+  
+  ```sh
+  set ENV_FILE=otro.env && go run main.go
+  ```
+
+Si no especificas nada, se usará `.env` por defecto.
 # Prueba de ejecución del endpoint /procedure con TypeScript
 
 Este documento describe cómo probar el endpoint `/procedure` de la API Go usando un script TypeScript compatible con Bun, Deno o Node.js.
