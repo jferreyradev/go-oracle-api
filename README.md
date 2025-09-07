@@ -72,7 +72,7 @@ go test
 
 ## Créditos y autoría
 
-Este proyecto fue desarrollado y verificado por [Tu Nombre o Usuario], con ayuda de GitHub Copilot para la generación y revisión de código.
+Este proyecto fue desarrollado y verificado por [jferreyradev](https://github.com/jferreyradev/jferreyradev) , con ayuda de GitHub Copilot para la generación y revisión de código.
 
 ## Licencia
 MIT
