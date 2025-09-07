@@ -36,9 +36,86 @@ func main() {
 	http.HandleFunc("/ping", authMiddleware(pingHandler))
 	http.HandleFunc("/query", authMiddleware(queryHandler))
 	http.HandleFunc("/exec", authMiddleware(execHandler))
+	http.HandleFunc("/procedure", authMiddleware(procedureHandler))
 	log.Println("Microservicio escuchando en :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
 
+// procedureHandler ejecuta un procedimiento almacenado con parámetros IN y OUT
+func procedureHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+
+	var req struct {
+		Name   string `json:"name"`
+		Params []struct {
+			Name      string      `json:"name"`
+			Value     interface{} `json:"value,omitempty"`
+			Direction string      `json:"direction,omitempty"`
+		} `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "JSON inválido"})
+		return
+	}
+	if req.Name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Falta el campo 'name'"})
+		return
+	}
+
+	placeholders := make([]string, len(req.Params))
+	args := make([]interface{}, len(req.Params))
+	outIndexes := make(map[int]string)
+	for i, p := range req.Params {
+		placeholders[i] = fmt.Sprintf(":%d", i+1)
+		if strings.ToUpper(p.Direction) == "OUT" {
+			var outVar sql.NullString
+			args[i] = sql.Out{Dest: &outVar}
+			outIndexes[i] = p.Name
+		} else {
+			args[i] = p.Value
+		}
+	}
+	call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
+
+	stmt, err := db.Prepare(call)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	defer stmt.Close()
+
+	if _, err := stmt.Exec(args...); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	out := make(map[string]interface{})
+	for i, name := range outIndexes {
+		if outVal, ok := args[i].(sql.Out); ok {
+			if ptr, ok := outVal.Dest.(*sql.NullString); ok {
+				if ptr.Valid {
+					out[name] = ptr.String
+				} else {
+					out[name] = nil
+				}
+			}
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
 }
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +151,6 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"sysdate": sysdate})
 }
 
-// authMiddleware verifica el token en el header Authorization
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(&w, r)
@@ -121,7 +197,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// execHandler permite ejecutar una consulta SQL enviada en el cuerpo de una petición POST
 func execHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w, r)
 	w.Header().Set("Content-Type", "application/json")
