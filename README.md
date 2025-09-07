@@ -1,3 +1,22 @@
+## ¿Qué problema soluciona este microservicio?
+
+En muchos entornos de desarrollo, diferentes aplicaciones necesitan acceder a datos almacenados en bases de datos Oracle. Sin embargo, integrar directamente con Oracle suele requerir la instalación de drivers o librerías específicos en cada entorno, lo que complica la interoperabilidad y el despliegue.
+
+Este microservicio resuelve ese problema actuando como un puente seguro y ligero entre una base de datos Oracle y otras aplicaciones, exponiendo endpoints HTTP para consultas y modificaciones. Así, cualquier sistema capaz de realizar peticiones HTTP/JSON puede interactuar con Oracle sin necesidad de instalar librerías, drivers ni configuraciones adicionales de Oracle en el cliente.
+
+Además, permite la integración de APIs o servicios desarrollados en cualquier herramienta o lenguaje, ya que la comunicación se realiza mediante HTTP estándar, facilitando la interoperabilidad entre sistemas heterogéneos.
+
+**Ventajas principales:**
+- Acceso centralizado a Oracle mediante HTTP.
+- No requiere que los sistemas consumidores instalen librerías de Oracle.
+- Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
+- Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
+- Facilita la integración de sistemas modernos (microservicios, aplicaciones web/móviles, otros servicios) con bases de datos Oracle.
+- Seguridad mediante autenticación de token y restricción opcional por IP.
+- Reduce el riesgo de exposición de credenciales o la base de datos a múltiples sistemas.
+
+En resumen, este microservicio facilita la interoperabilidad y modernización de sistemas que dependen de Oracle, proporcionando una capa de acceso API que puede ser utilizada por cualquier tecnología capaz de realizar peticiones HTTP.
+
 # Go Oracle API Microservicio
 
 Este microservicio en Go expone endpoints HTTP para consultar y modificar una base de datos Oracle, pensado como puente entre Oracle y otras APIs.
