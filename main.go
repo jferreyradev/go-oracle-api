@@ -17,6 +17,16 @@ import (
 var db *sql.DB
 
 func main() {
+	// Configurar logging a archivo
+	logFile, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		log.SetOutput(logFile)
+	} else {
+		log.Printf("No se pudo abrir app.log para logging: %v", err)
+	}
+
+	http.HandleFunc("/logs", logRequest(authMiddleware(logsHandler)))
+
 	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
 	// ...resto de la función main...
 	envFile := ".env"
@@ -34,7 +44,6 @@ func main() {
 	service := os.Getenv("ORACLE_SERVICE")
 
 	dsn := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", user, password, host, port, service)
-	var err error
 	db, err = sql.Open("oracle", dsn)
 	if err != nil {
 		log.Fatalf("Error abriendo conexión: %v", err)
@@ -69,15 +78,28 @@ func main() {
 	}
 	for _, ip := range ips {
 		log.Printf("Microservicio escuchando en http://%s:%s", ip, port)
-
-		// Mostrar información de conexión a Oracle
-		if err := db.Ping(); err == nil {
-			log.Printf("Conectado a Oracle: %s@%s:%s/%s (OK)", user, host, port, service)
-		} else {
-			log.Printf("No se pudo conectar a Oracle: %v", err)
-		}
 	}
+	// Mostrar información de conexión a Oracle
+	if err := db.Ping(); err == nil {
+		log.Printf("Conectado a Oracle: %s@%s:%s/%s (OK)", user, host, port, service)
+	} else {
+		log.Printf("No se pudo conectar a Oracle: %v", err)
+	}
+
 	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+}
+
+// logsHandler sirve el contenido del archivo de log (app.log)
+func logsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	data, err := os.ReadFile("app.log")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error leyendo el log: " + err.Error()))
+		return
+	}
+	w.Write(data)
 }
 
 // logRequest es un middleware que registra cada petición HTTP entrante
@@ -177,12 +199,23 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	placeholders := make([]string, len(req.Params))
 	args := make([]interface{}, len(req.Params))
 	outIndexes := make(map[int]string)
+	outBuffers := make(map[int]*string)
+	outNumMap := make(map[int]*sql.NullFloat64)
 	for i, p := range req.Params {
 		placeholders[i] = fmt.Sprintf(":%d", i+1)
 		if strings.ToUpper(p.Direction) == "OUT" {
-			var outVar sql.NullString
-			args[i] = sql.Out{Dest: &outVar}
-			outIndexes[i] = p.Name
+			lowerName := strings.ToLower(p.Name)
+			if strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") || strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") {
+				var outNum sql.NullFloat64
+				args[i] = sql.Out{Dest: &outNum, In: false}
+				outIndexes[i] = p.Name
+				outNumMap[i] = &outNum
+			} else {
+				outStr := ""
+				args[i] = sql.Out{Dest: &outStr, In: false}
+				outIndexes[i] = p.Name
+				outBuffers[i] = &outStr
+			}
 		} else {
 			args[i] = p.Value
 		}
@@ -205,14 +238,16 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	out := make(map[string]interface{})
 	for i, name := range outIndexes {
-		if outVal, ok := args[i].(sql.Out); ok {
-			if ptr, ok := outVal.Dest.(*sql.NullString); ok {
-				if ptr.Valid {
-					out[name] = ptr.String
-				} else {
-					out[name] = nil
-				}
+		if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
+			if numPtr.Valid {
+				out[name] = numPtr.Float64
+			} else {
+				out[name] = nil
 			}
+			continue
+		}
+		if ptr, ok := outBuffers[i]; ok && ptr != nil {
+			out[name] = *ptr
 		}
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
