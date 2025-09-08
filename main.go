@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +17,7 @@ import (
 var db *sql.DB
 
 func main() {
-	http.HandleFunc("/upload", authMiddleware(uploadHandler))
+	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
 	// ...resto de la función main...
 	envFile := ".env"
 	if len(os.Args) > 1 && os.Args[1] != "" {
@@ -40,10 +41,10 @@ func main() {
 	}
 	defer db.Close()
 
-	http.HandleFunc("/ping", authMiddleware(pingHandler))
-	http.HandleFunc("/query", authMiddleware(queryHandler))
-	http.HandleFunc("/exec", authMiddleware(execHandler))
-	http.HandleFunc("/procedure", authMiddleware(procedureHandler))
+	http.HandleFunc("/ping", logRequest(authMiddleware(pingHandler)))
+	http.HandleFunc("/query", logRequest(authMiddleware(queryHandler)))
+	http.HandleFunc("/exec", logRequest(authMiddleware(execHandler)))
+	http.HandleFunc("/procedure", logRequest(authMiddleware(procedureHandler)))
 
 	port = os.Getenv("PORT")
 	if port == "" {
@@ -53,8 +54,35 @@ func main() {
 			port = "8080"
 		}
 	}
-	log.Printf("Microservicio escuchando en :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	// Obtener IPs locales
+	ips := []string{"0.0.0.0"}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		ips = []string{}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
+		if len(ips) == 0 {
+			ips = []string{"0.0.0.0"}
+		}
+	}
+	for _, ip := range ips {
+		log.Printf("Microservicio escuchando en http://%s:%s", ip, port)
+	}
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+}
+
+// logRequest es un middleware que registra cada petición HTTP entrante
+func logRequest(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if colon := strings.LastIndex(ip, ":"); colon != -1 {
+			ip = ip[:colon]
+		}
+		log.Printf("%s %s desde %s", r.Method, r.URL.Path, ip)
+		next(w, r)
+	}
 }
 
 // uploadHandler recibe archivos vía multipart/form-data y los guarda en una tabla BLOB
@@ -219,6 +247,11 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(&w, r)
+		if os.Getenv("API_NO_AUTH") == "1" {
+			// Seguridad desactivada para pruebas
+			next(w, r)
+			return
+		}
 		token := os.Getenv("API_TOKEN")
 		authHeader := r.Header.Get("Authorization")
 		expected := "Bearer " + token
