@@ -69,6 +69,13 @@ func main() {
 	}
 	for _, ip := range ips {
 		log.Printf("Microservicio escuchando en http://%s:%s", ip, port)
+
+		// Mostrar información de conexión a Oracle
+		if err := db.Ping(); err == nil {
+			log.Printf("Conectado a Oracle: %s@%s:%s/%s (OK)", user, host, port, service)
+		} else {
+			log.Printf("No se pudo conectar a Oracle: %v", err)
+		}
 	}
 	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
 }
