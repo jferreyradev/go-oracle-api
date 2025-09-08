@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -16,8 +17,15 @@ import (
 var db *sql.DB
 
 func main() {
-	// Cargar variables de entorno desde .env si existe
-	_ = godotenv.Load()
+	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
+	// ...resto de la función main...
+	envFile := ".env"
+	if len(os.Args) > 1 && os.Args[1] != "" {
+		envFile = os.Args[1]
+	} else if customEnv := os.Getenv("ENV_FILE"); customEnv != "" {
+		envFile = customEnv
+	}
+	_ = godotenv.Load(envFile)
 
 	user := os.Getenv("ORACLE_USER")
 	password := os.Getenv("ORACLE_PASSWORD")
@@ -33,12 +41,174 @@ func main() {
 	}
 	defer db.Close()
 
-	http.HandleFunc("/ping", authMiddleware(pingHandler))
-	http.HandleFunc("/query", authMiddleware(queryHandler))
-	http.HandleFunc("/exec", authMiddleware(execHandler))
-	log.Println("Microservicio escuchando en :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/ping", logRequest(authMiddleware(pingHandler)))
+	http.HandleFunc("/query", logRequest(authMiddleware(queryHandler)))
+	http.HandleFunc("/exec", logRequest(authMiddleware(execHandler)))
+	http.HandleFunc("/procedure", logRequest(authMiddleware(procedureHandler)))
 
+	port = os.Getenv("PORT")
+	if port == "" {
+		if len(os.Args) > 2 && os.Args[2] != "" {
+			port = os.Args[2]
+		} else {
+			port = "8080"
+		}
+	}
+	// Obtener IPs locales
+	ips := []string{"0.0.0.0"}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		ips = []string{}
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
+		if len(ips) == 0 {
+			ips = []string{"0.0.0.0"}
+		}
+	}
+	for _, ip := range ips {
+		log.Printf("Microservicio escuchando en http://%s:%s", ip, port)
+	}
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+}
+
+// logRequest es un middleware que registra cada petición HTTP entrante
+func logRequest(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if colon := strings.LastIndex(ip, ":"); colon != -1 {
+			ip = ip[:colon]
+		}
+		log.Printf("%s %s desde %s", r.Method, r.URL.Path, ip)
+		next(w, r)
+	}
+}
+
+// uploadHandler recibe archivos vía multipart/form-data y los guarda en una tabla BLOB
+func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+	err := r.ParseMultipartForm(100 << 20) // 100 MB máximo
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error al leer el archivo: " + err.Error()})
+		return
+	}
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Archivo no recibido: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	// Leer el archivo en memoria (para archivos muy grandes, usar streaming a la BD)
+	data := make([]byte, handler.Size)
+	_, err = file.Read(data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error leyendo archivo: " + err.Error()})
+		return
+	}
+
+	// Metadatos opcionales
+	nombre := handler.Filename
+	descripcion := r.FormValue("descripcion")
+
+	// Insertar en la tabla (ejemplo: archivos(id, nombre, descripcion, contenido BLOB))
+	_, err = db.Exec("INSERT INTO archivos (nombre, descripcion, contenido) VALUES (:1, :2, :3)", nombre, descripcion, data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error guardando en BD: " + err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "nombre": nombre})
+}
+
+// procedureHandler ejecuta un procedimiento almacenado con parámetros IN y OUT
+func procedureHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+
+	var req struct {
+		Name   string `json:"name"`
+		Params []struct {
+			Name      string      `json:"name"`
+			Value     interface{} `json:"value,omitempty"`
+			Direction string      `json:"direction,omitempty"`
+		} `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "JSON inválido"})
+		return
+	}
+	if req.Name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Falta el campo 'name'"})
+		return
+	}
+
+	placeholders := make([]string, len(req.Params))
+	args := make([]interface{}, len(req.Params))
+	outIndexes := make(map[int]string)
+	for i, p := range req.Params {
+		placeholders[i] = fmt.Sprintf(":%d", i+1)
+		if strings.ToUpper(p.Direction) == "OUT" {
+			var outVar sql.NullString
+			args[i] = sql.Out{Dest: &outVar}
+			outIndexes[i] = p.Name
+		} else {
+			args[i] = p.Value
+		}
+	}
+	call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
+
+	stmt, err := db.Prepare(call)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	defer stmt.Close()
+
+	if _, err := stmt.Exec(args...); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	out := make(map[string]interface{})
+	for i, name := range outIndexes {
+		if outVal, ok := args[i].(sql.Out); ok {
+			if ptr, ok := outVal.Dest.(*sql.NullString); ok {
+				if ptr.Valid {
+					out[name] = ptr.String
+				} else {
+					out[name] = nil
+				}
+			}
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
 }
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
@@ -74,10 +244,14 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"sysdate": sysdate})
 }
 
-// authMiddleware verifica el token en el header Authorization
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(&w, r)
+		if os.Getenv("API_NO_AUTH") == "1" {
+			// Seguridad desactivada para pruebas
+			next(w, r)
+			return
+		}
 		token := os.Getenv("API_TOKEN")
 		authHeader := r.Header.Get("Authorization")
 		expected := "Bearer " + token
@@ -121,7 +295,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// execHandler permite ejecutar una consulta SQL enviada en el cuerpo de una petición POST
 func execHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w, r)
 	w.Header().Set("Content-Type", "application/json")
