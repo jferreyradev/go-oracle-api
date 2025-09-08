@@ -33,45 +33,62 @@ En resumen, este microservicio facilita la interoperabilidad y modernización de
     ```sh
     go mod tidy
     ```
-3. Crea un archivo `.env` en la raíz con el siguiente contenido:
-    ```env
-    ORACLE_USER=usuario
-    ORACLE_PASSWORD=contraseña
-    ORACLE_HOST=localhost
-    ORACLE_PORT=1521
-    ORACLE_SERVICE=servicio_o_sid
-    API_TOKEN=tu_token_seguro
-    ```
 
-## Configuración de IPs permitidas
+3. Copia el archivo `.env.example` como `.env` y edítalo con tus valores:
+   ```sh
+   cp .env.example .env
+   # o copia manualmente el contenido
+   ```
+    
+   Explicación de variables principales:
+   - `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_HOST`, `ORACLE_PORT`, `ORACLE_SERVICE`: Datos de conexión a Oracle.
+   - `API_TOKEN`: Token requerido en el header Authorization para acceder a la API.
+   - `API_ALLOWED_IPS`: Lista de IPs permitidas (vacío = todas). Ejemplo: `192.168.1.10,192.168.1.20`
+   - `PORT`: Puerto donde escuchará el microservicio (por defecto 8080).
+   - `ENV_FILE`: Permite especificar otro archivo de variables de entorno.
+   - `API_NO_AUTH`: Si es `1`, desactiva autenticación y restricción de IPs (solo para pruebas).
 
-Puedes restringir el acceso solo a ciertas IPs agregando en tu `.env`:
+   Consulta y edita `.env.example` para ver todas las opciones y recomendaciones.
 
-```
-API_ALLOWED_IPS=192.168.1.10,192.168.1.20
-```
 
-Si la variable está vacía, cualquier IP puede acceder (solo con el token).
+## Seguridad y pruebas
+
+- Por defecto, la API requiere el token y solo permite las IPs configuradas en `API_ALLOWED_IPS`.
+- Para pruebas rápidas, puedes desactivar la autenticación y restricción de IPs con `API_NO_AUTH=1` en tu `.env` (no recomendado en producción).
+- Si la variable `API_ALLOWED_IPS` está vacía, cualquier IP puede acceder (solo con el token).
 
 ## Uso
+
 1. Inicia el microservicio:
-    ```sh
-    go run main.go
-    ```
-    Puedes indicar qué archivo de variables de entorno usar y el puerto de escucha de las siguientes formas:
+      ```sh
+      go run main.go
+      ```
+    
+      Puedes indicar el archivo de variables de entorno y el puerto de escucha de varias formas:
+      - Archivo .env por argumento:
+         ```sh
+         go run main.go otro.env
+         ```
+      - Puerto por argumento (después del archivo .env):
+         ```sh
+         go run main.go otro.env 9090
+         ```
+      - Por variable de entorno:
+         ```sh
+         set ENV_FILE=otro.env
+         set PORT=9090
+         go run main.go
+         ```
+      - Por defecto: Si no especificas nada, se usará `.env` y el puerto 8080.
 
-    - Archivo .env por argumento:
-       ```sh
-       go run main.go filename.env
-       ```
-    - Puerto por argumento (después del archivo .env):
-       ```sh
-       go run main.go otro.env 9090
-       ```
-    - Por defecto:
-       Si no especificas nada, se usará `.env` y el puerto 8080.
 
-2. Los endpoints estarán disponibles en `http://localhost:8080`.
+2. Al iniciar, el microservicio mostrará en consola todas las IPs locales y el puerto donde está escuchando, por ejemplo:
+   ```
+   Microservicio escuchando en http://192.168.1.100:8080
+   Microservicio escuchando en http://10.0.0.5:8080
+   Microservicio escuchando en http://0.0.0.0:8080
+   ```
+   Usa la IP correspondiente según tu red para acceder desde otros equipos.
 
 
 ### Endpoints
