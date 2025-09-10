@@ -1,34 +1,39 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/sijms/go-ora/v2"
 )
 
 var db *sql.DB
+var logFileName string // Nombre del log de la instancia
 
-func main() {
-	// Configurar logging a archivo
-	logFile, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err == nil {
-		log.SetOutput(logFile)
-	} else {
-		log.Printf("No se pudo abrir app.log para logging: %v", err)
-	}
+// Configuración de la aplicación
+type AppConfig struct {
+	OracleUser     string
+	OraclePassword string
+	OracleHost     string
+	OraclePort     string
+	OracleService  string
+	ListenPort     string
+}
 
-	http.HandleFunc("/logs", logRequest(authMiddleware(logsHandler)))
-
-	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
-	// ...resto de la función main...
+// Carga la configuración desde variables de entorno y argumentos, valida obligatorias
+func loadConfig() AppConfig {
 	envFile := ".env"
 	if len(os.Args) > 1 && os.Args[1] != "" {
 		envFile = os.Args[1]
@@ -43,27 +48,139 @@ func main() {
 	port := os.Getenv("ORACLE_PORT")
 	service := os.Getenv("ORACLE_SERVICE")
 
-	dsn := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", user, password, host, port, service)
-	db, err = sql.Open("oracle", dsn)
-	if err != nil {
-		log.Fatalf("Error abriendo conexión: %v", err)
+	missing := []string{}
+	if user == "" {
+		missing = append(missing, "ORACLE_USER")
 	}
-	defer db.Close()
+	if password == "" {
+		missing = append(missing, "ORACLE_PASSWORD")
+	}
+	if host == "" {
+		missing = append(missing, "ORACLE_HOST")
+	}
+	if port == "" {
+		missing = append(missing, "ORACLE_PORT")
+	}
+	if service == "" {
+		missing = append(missing, "ORACLE_SERVICE")
+	}
+	if len(missing) > 0 {
+		msg := "Faltan variables obligatorias: " + strings.Join(missing, ", ") + "\nRevisa tu archivo .env o variables de entorno."
+		fmt.Fprintln(os.Stderr, msg)
+		_ = os.WriteFile("log/last_error.txt", []byte(msg+"\n"), 0644)
+		os.Exit(2)
+	}
 
+	listenPort := os.Getenv("PORT")
+	if listenPort == "" {
+		if len(os.Args) > 2 && os.Args[2] != "" {
+			listenPort = os.Args[2]
+		} else {
+			listenPort = "8080"
+		}
+	}
+
+	return AppConfig{
+		OracleUser:     user,
+		OraclePassword: password,
+		OracleHost:     host,
+		OraclePort:     port,
+		OracleService:  service,
+		ListenPort:     listenPort,
+	}
+}
+
+// Abre la conexión a Oracle y la retorna
+func openOracleConnection(cfg AppConfig) (*sql.DB, error) {
+	dsn := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", cfg.OracleUser, cfg.OraclePassword, cfg.OracleHost, cfg.OraclePort, cfg.OracleService)
+	return sql.Open("oracle", dsn)
+}
+
+func main() {
+	// ===============================
+	// 1. Mostrar ayuda si se solicita
+	// ===============================
+	if len(os.Args) > 1 {
+		arg := strings.ToLower(os.Args[1])
+		if arg == "-h" || arg == "--help" || arg == "help" {
+			fmt.Println(`
+Go Oracle API - Opciones de ejecución
+
+USO:
+  go run main.go [archivo_env] [puerto]
+  go-oracle-api.exe [archivo_env] [puerto]
+
+Argumentos opcionales:
+  archivo_env   Archivo de variables de entorno (por defecto .env)
+  puerto        Puerto donde escuchará la API (por defecto 8080)
+
+También puedes usar variables de entorno:
+  ENV_FILE      Archivo de configuración
+  PORT          Puerto de escucha
+
+Ejemplos:
+  go run main.go .env2 9090
+  set ENV_FILE=otro.env
+  set PORT=9090
+  go run main.go
+
+Para más información consulta:
+  - README.md
+  - docs/CONFIGURACION_ENV.md
+  - Endpoint /docs
+`)
+			os.Exit(0)
+		}
+	}
+
+	// ===============================
+	// 2. Configuración de logging
+	// ===============================
+
+	// Crear carpeta log si no existe
+	if _, err := os.Stat("log"); os.IsNotExist(err) {
+		_ = os.Mkdir("log", 0755)
+	}
+	// Generar nombre de log único por instancia
+	logFileName = "log/app-" + time.Now().Format("2006-01-02_15-04-05") + ".log"
+	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	} else {
+		log.SetOutput(os.Stdout)
+		log.Printf("No se pudo abrir %s para logging: %v", logFileName, err)
+	}
+
+	// ===============================
+	// 3. Registro de todos los endpoints
+	// ===============================
+	http.HandleFunc("/docs", docsHandler)
+	http.HandleFunc("/logs", logRequest(authMiddleware(logsHandler)))
+	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
 	http.HandleFunc("/ping", logRequest(authMiddleware(pingHandler)))
 	http.HandleFunc("/query", logRequest(authMiddleware(queryHandler)))
 	http.HandleFunc("/exec", logRequest(authMiddleware(execHandler)))
 	http.HandleFunc("/procedure", logRequest(authMiddleware(procedureHandler)))
 
-	port = os.Getenv("PORT")
-	if port == "" {
-		if len(os.Args) > 2 && os.Args[2] != "" {
-			port = os.Args[2]
-		} else {
-			port = "8080"
-		}
+	// ===============================
+	// 4. Carga de configuración y conexión a Oracle
+	// ===============================
+	cfg := loadConfig()
+
+	db, err = openOracleConnection(cfg)
+	if err != nil {
+		_ = os.WriteFile("log/last_error.txt", []byte(fmt.Sprintf("Error abriendo conexión: %v\n", err)), 0644)
+		log.Fatalf("Error abriendo conexión: %v", err)
 	}
-	// Obtener IPs locales
+	defer db.Close()
+	port := cfg.ListenPort
+	user := cfg.OracleUser
+	host := cfg.OracleHost
+	service := cfg.OracleService
+
+	// ===============================
+	// 7. Detección de IPs locales
+	// ===============================
 	ips := []string{"0.0.0.0"}
 	if addrs, err := net.InterfaceAddrs(); err == nil {
 		ips = []string{}
@@ -76,24 +193,84 @@ func main() {
 			ips = []string{"0.0.0.0"}
 		}
 	}
+
+	// ===============================
+	// 8. Resumen de arranque y estado
+	// ===============================
+	log.Println("==============================")
+	log.Println("Estado de la API al iniciar:")
 	for _, ip := range ips {
-		log.Printf("Microservicio escuchando en http://%s:%s", ip, port)
+		log.Printf("- Endpoint disponible: http://%s:%s", ip, port)
 	}
-	// Mostrar información de conexión a Oracle
+	log.Println("- Endpoint de logs: /logs")
+	log.Println("- Endpoint de ping: /ping")
+	log.Println("- Endpoint de query: /query")
+	log.Println("- Endpoint de exec: /exec")
+	log.Println("- Endpoint de procedure: /procedure")
+	log.Println("- Endpoint de upload: /upload")
+	log.Printf("- Conectado a Oracle: usuario=%s host=%s puerto=%s servicio=%s", user, host, port, service)
+	// Estado de conexión a Oracle
 	if err := db.Ping(); err == nil {
-		log.Printf("Conectado a Oracle: %s@%s:%s/%s (OK)", user, host, port, service)
+		log.Printf("- Conexión a Oracle: OK")
 	} else {
-		log.Printf("No se pudo conectar a Oracle: %v", err)
+		log.Printf("- Conexión a Oracle: ERROR: %v", err)
+		// Registrar error de ping en archivo especial
+		_ = os.WriteFile("log/last_error.txt", []byte(fmt.Sprintf("Error de conexión a Oracle (ping): %v\n", err)), 0644)
+	}
+	log.Println("==============================")
+
+	// ===============================
+	// 9. Iniciar servidor HTTP con graceful shutdown
+	// ===============================
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: http.DefaultServeMux,
 	}
 
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+	// Canal para señales del sistema
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Servidor escuchando en 0.0.0.0:%s (Ctrl+C para detener)", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Error al iniciar el servidor: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("\nSeñal de apagado recibida, cerrando servidor...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Error en shutdown: %v", err)
+	}
+	log.Println("Servidor cerrado correctamente.")
 }
 
-// logsHandler sirve el contenido del archivo de log (app.log)
+// docsHandler sirve el contenido del README.md como documentación básica
+func docsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	data, err := os.ReadFile("README.md")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error leyendo la documentación: " + err.Error()))
+		return
+	}
+	w.Write(data)
+}
+
+// logsHandler sirve el contenido del archivo de log de la instancia actual
 func logsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w, r)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	data, err := os.ReadFile("app.log")
+	if logFileName == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("No hay log de instancia disponible"))
+		return
+	}
+	data, err := os.ReadFile(logFileName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error leyendo el log: " + err.Error()))
@@ -286,11 +463,39 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"sysdate": sysdate})
 }
 
+func ipAllowed(remoteIP string, allowedIPs []string) bool {
+	parsedRemote := net.ParseIP(remoteIP)
+	if parsedRemote == nil {
+		return false
+	}
+	for _, ip := range allowedIPs {
+		ip = strings.TrimSpace(ip)
+		if ip == "" {
+			continue
+		}
+		if ip == "localhost" && (remoteIP == "127.0.0.1" || remoteIP == "::1") {
+			return true
+		}
+		if strings.Contains(ip, "/") {
+			// Rango CIDR
+			_, cidrNet, err := net.ParseCIDR(ip)
+			if err == nil && cidrNet.Contains(parsedRemote) {
+				return true
+			}
+		} else {
+			// IP exacta
+			if ip == remoteIP {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(&w, r)
 		if os.Getenv("API_NO_AUTH") == "1" {
-			// Seguridad desactivada para pruebas
 			next(w, r)
 			return
 		}
@@ -302,7 +507,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"error": "No autorizado"})
 			return
 		}
-		// Validación de IPs permitidas
 		allowedIPs := os.Getenv("API_ALLOWED_IPS")
 		if allowedIPs != "" {
 			ipList := strings.Split(allowedIPs, ",")
@@ -310,23 +514,9 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			if colon := strings.LastIndex(remoteIP, ":"); colon != -1 {
 				remoteIP = remoteIP[:colon]
 			}
-			// Eliminar corchetes de IPv6
 			remoteIP = strings.Trim(remoteIP, "[]")
 			log.Printf("Debug IP: remoteIP=%s, allowedIPs=%v", remoteIP, ipList)
-			allowed := false
-			for _, ip := range ipList {
-				ip = strings.TrimSpace(ip)
-				if ip == remoteIP {
-					allowed = true
-					break
-				}
-				// Aceptar 'localhost' si la IP es 127.0.0.1 o ::1
-				if ip == "localhost" && (remoteIP == "127.0.0.1" || remoteIP == "::1") {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
+			if !ipAllowed(remoteIP, ipList) {
 				log.Printf("IP rechazada: %s", remoteIP)
 				w.WriteHeader(http.StatusForbidden)
 				json.NewEncoder(w).Encode(map[string]string{"error": "IP no permitida", "ip": remoteIP})
