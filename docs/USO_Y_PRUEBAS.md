@@ -28,21 +28,62 @@
     -d '{"query": "CREATE TABLE test_tabla (id NUMBER)"}' http://localhost:8080/exec
   ```
 
+
 ### 4. `/procedure`
 - **Método:** POST
-- **Descripción:** Ejecuta procedimientos almacenados con parámetros IN y OUT.
-- **Prueba (suma_simple):**
-  ```bash
-  curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
-    -d '{
-      "name": "suma_simple",
-      "params": [
-        { "name": "a", "value": 5, "direction": "IN" },
-        { "name": "b", "value": 7, "direction": "IN" },
-        { "name": "resultado", "direction": "OUT" }
-      ]
-    }' http://localhost:8080/procedure
-  ```
+- **Descripción:** Ejecuta procedimientos y funciones de paquetes Oracle con parámetros IN y OUT.
+
+#### Ejemplo 1: Llamada a procedimiento simple
+```bash
+curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  -d '{
+    "name": "suma_simple",
+    "params": [
+      { "name": "a", "value": 5, "direction": "IN" },
+      { "name": "b", "value": 7, "direction": "IN" },
+      { "name": "resultado", "direction": "OUT" }
+    ]
+  }' http://localhost:8080/procedure
+```
+
+#### Ejemplo 2: Llamada a función de paquete
+```bash
+curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  -d '{
+    "name": "usuario.TRANSFORMADOR.BUSCA_PERSONA",
+    "isFunction": true,
+    "params": [
+      { "name": "vDNI", "value": 26579673 },
+      { "name": "resultado", "direction": "OUT" }
+    ]
+  }' http://localhost:8080/procedure
+```
+**Respuesta esperada:**
+```json
+{
+  "status": "ok",
+  "out": {
+    "resultado": 12345
+  }
+}
+```
+
+#### Ejemplo 3: Llamada a procedimiento con parámetro de fecha
+```bash
+curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  -d '{
+    "name": "workflow.controles.CARGALIQNEGATIVAS",
+    "params": [
+      { "name": "vPERIODO", "value": "2025-09-16" },
+      { "name": "vIDTIPOLIQ", "value": 1 },
+      { "name": "vIDGRUPO", "value": 2 },
+      { "name": "vGRUPOREP", "value": 3 }
+    ]
+  }' http://localhost:8080/procedure
+```
+Puedes usar fechas en formato `yyyy-mm-dd` o `dd/mm/yyyy`.
+
+---
 
 ### 5. `/upload`
 - **Método:** POST (multipart/form-data)

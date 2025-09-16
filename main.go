@@ -361,6 +361,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			Value     interface{} `json:"value,omitempty"`
 			Direction string      `json:"direction,omitempty"`
 		} `json:"params"`
+		IsFunction bool `json:"isFunction,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -373,28 +374,134 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	placeholders := make([]string, len(req.Params))
-	args := make([]interface{}, len(req.Params))
+	placeholders := []string{}
+	args := []interface{}{}
 	outIndexes := make(map[int]string)
 	outBuffers := make(map[int]*string)
 	outNumMap := make(map[int]*sql.NullFloat64)
+
+	// Si es función, el primer OUT es el valor de retorno
+	if req.IsFunction {
+		// Buscar el primer parámetro OUT (valor de retorno)
+		retIndex := -1
+		for i, p := range req.Params {
+			if strings.ToUpper(p.Direction) == "OUT" {
+				retIndex = i
+				break
+			}
+		}
+		if retIndex == -1 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Debe incluir un parámetro OUT para el valor de retorno"})
+			return
+		}
+		// Agregar el OUT de retorno como primer parámetro
+		p := req.Params[retIndex]
+		placeholders = append(placeholders, ":1")
+		if strings.Contains(strings.ToLower(p.Name), "resultado") || strings.Contains(strings.ToLower(p.Name), "total") || strings.Contains(strings.ToLower(p.Name), "count") || strings.Contains(strings.ToLower(p.Name), "suma") || strings.Contains(strings.ToLower(p.Name), "num") {
+			var outNum sql.NullFloat64
+			args = append(args, sql.Out{Dest: &outNum, In: false})
+			outIndexes[0] = p.Name
+			outNumMap[0] = &outNum
+		} else {
+			outStr := ""
+			args = append(args, sql.Out{Dest: &outStr, In: false})
+			outIndexes[0] = p.Name
+			outBuffers[0] = &outStr
+		}
+		// Agregar el resto de parámetros (excepto el OUT de retorno)
+		paramPos := 2
+		for i, p := range req.Params {
+			if i == retIndex {
+				continue
+			}
+			placeholders = append(placeholders, fmt.Sprintf(":%d", paramPos))
+			if strings.ToUpper(p.Direction) == "OUT" {
+				lowerName := strings.ToLower(p.Name)
+				if strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") || strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") {
+					var outNum sql.NullFloat64
+					args = append(args, sql.Out{Dest: &outNum, In: false})
+					outIndexes[paramPos-1] = p.Name
+					outNumMap[paramPos-1] = &outNum
+				} else {
+					outStr := ""
+					args = append(args, sql.Out{Dest: &outStr, In: false})
+					outIndexes[paramPos-1] = p.Name
+					outBuffers[paramPos-1] = &outStr
+				}
+			} else {
+				args = append(args, p.Value)
+			}
+			paramPos++
+		}
+		call := fmt.Sprintf("BEGIN :1 := %s(%s); END;", req.Name, strings.Join(placeholders[1:], ", "))
+
+		stmt, err := db.Prepare(call)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		defer stmt.Close()
+
+		if _, err := stmt.Exec(args...); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		out := make(map[string]interface{})
+		for i, name := range outIndexes {
+			if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
+				if numPtr.Valid {
+					out[name] = numPtr.Float64
+				} else {
+					out[name] = nil
+				}
+				continue
+			}
+			if ptr, ok := outBuffers[i]; ok && ptr != nil {
+				out[name] = *ptr
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
+		return
+	}
+
+	// Procedimiento normal (no función)
 	for i, p := range req.Params {
-		placeholders[i] = fmt.Sprintf(":%d", i+1)
+		placeholders = append(placeholders, fmt.Sprintf(":%d", i+1))
 		if strings.ToUpper(p.Direction) == "OUT" {
 			lowerName := strings.ToLower(p.Name)
 			if strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") || strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") {
 				var outNum sql.NullFloat64
-				args[i] = sql.Out{Dest: &outNum, In: false}
+				args = append(args, sql.Out{Dest: &outNum, In: false})
 				outIndexes[i] = p.Name
 				outNumMap[i] = &outNum
 			} else {
 				outStr := ""
-				args[i] = sql.Out{Dest: &outStr, In: false}
+				args = append(args, sql.Out{Dest: &outStr, In: false})
 				outIndexes[i] = p.Name
 				outBuffers[i] = &outStr
 			}
 		} else {
-			args[i] = p.Value
+			// Detección automática de fechas por nombre o formato
+			if strings.Contains(strings.ToLower(p.Name), "fecha") || strings.Contains(strings.ToLower(p.Name), "periodo") {
+				// Intentar parsear como yyyy-mm-dd o dd/mm/yyyy
+				var t time.Time
+				var err error
+				if s, ok := p.Value.(string); ok {
+					t, err = time.Parse("2006-01-02", s)
+					if err != nil {
+						t, err = time.Parse("02/01/2006", s)
+					}
+					if err == nil {
+						args = append(args, t)
+						continue
+					}
+				}
+			}
+			args = append(args, p.Value)
 		}
 	}
 	call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
@@ -452,15 +559,69 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// Ejemplo: SELECT sysdate FROM dual
-	row := db.QueryRow("SELECT sysdate FROM dual")
-	var sysdate string
-	if err := row.Scan(&sysdate); err != nil {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+
+	var req struct {
+		Query string `json:"query"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "JSON inválido"})
+		return
+	}
+	if strings.TrimSpace(req.Query) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Falta el campo 'query'"})
+		return
+	}
+
+	// Normalizar saltos de línea: reemplazar \r\n y \n por salto de línea real
+	normalizedQuery := strings.ReplaceAll(req.Query, "\r\n", "\n")
+	normalizedQuery = strings.ReplaceAll(normalizedQuery, "\\n", "\n")
+	rows, err := db.Query(normalizedQuery)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]string{"sysdate": sysdate})
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	results := []map[string]interface{}{}
+	for rows.Next() {
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+		if err := rows.Scan(columnPointers...); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		rowMap := make(map[string]interface{})
+		for i, colName := range cols {
+			val := columns[i]
+			b, ok := val.([]byte)
+			if ok {
+				rowMap[colName] = string(b)
+			} else {
+				rowMap[colName] = val
+			}
+		}
+		results = append(results, rowMap)
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
 }
 
 func ipAllowed(remoteIP string, allowedIPs []string) bool {
