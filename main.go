@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -145,7 +144,7 @@ Para más información consulta:
 	logFileName = "log/app-" + time.Now().Format("2006-01-02_15-04-05") + ".log"
 	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
-		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+		log.SetOutput(logFile) // Solo archivo, no consola
 	} else {
 		log.SetOutput(os.Stdout)
 		log.Printf("No se pudo abrir %s para logging: %v", logFileName, err)
