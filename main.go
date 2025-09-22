@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -145,7 +144,7 @@ Para más información consulta:
 	logFileName = "log/app-" + time.Now().Format("2006-01-02_15-04-05") + ".log"
 	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
-		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+		log.SetOutput(logFile) // Solo archivo, no consola
 	} else {
 		log.SetOutput(os.Stdout)
 		log.Printf("No se pudo abrir %s para logging: %v", logFileName, err)
@@ -197,6 +196,10 @@ Para más información consulta:
 	// ===============================
 	// 8. Resumen de arranque y estado
 	// ===============================
+	fmt.Println("==============================")
+	fmt.Println("API escuchando en el puerto:", port)
+	fmt.Printf("Conectado a Oracle: usuario=%s host=%s puerto=%s servicio=%s\n", user, host, cfg.OraclePort, service)
+	fmt.Println("==============================")
 	log.Println("==============================")
 	log.Println("Estado de la API al iniciar:")
 	for _, ip := range ips {
@@ -218,6 +221,19 @@ Para más información consulta:
 		_ = os.WriteFile("log/last_error.txt", []byte(fmt.Sprintf("Error de conexión a Oracle (ping): %v\n", err)), 0644)
 	}
 	log.Println("==============================")
+	fmt.Println("Endpoints disponibles:")
+	for _, ip := range ips {
+		fmt.Printf("- http://%s:%s\n", ip, port)
+	}
+	fmt.Println("  /logs      - Consulta el log actual de la instancia")
+	fmt.Println("  /ping      - Prueba de vida de la API (GET)")
+	fmt.Println("  /query     - Ejecuta una consulta SQL (GET)")
+	fmt.Println("  /exec      - Ejecuta una sentencia SQL (POST)")
+	fmt.Println("  /procedure - Ejecuta un procedimiento almacenado (POST)")
+	fmt.Println("  /upload    - Sube un archivo como BLOB (POST)")
+	fmt.Println("\nPara detalles de uso y ejemplos, consulta la documentación en:")
+	fmt.Println("  - /docs (endpoint)")
+	fmt.Println("  - docs/USO_Y_PRUEBAS.md (archivo)")
 
 	// ===============================
 	// 9. Iniciar servidor HTTP con graceful shutdown
