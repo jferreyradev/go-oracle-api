@@ -672,6 +672,13 @@ func ipAllowed(remoteIP string, allowedIPs []string) bool {
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		enableCORS(&w, r)
+
+		// Permitir peticiones OPTIONS (preflight) sin autenticación
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		if os.Getenv("API_NO_AUTH") == "1" {
 			next(w, r)
 			return
