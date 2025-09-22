@@ -135,7 +135,7 @@ async function crearTablaArchivos() {
 // Prueba todos los endpoints principales del microservicio Go Oracle API
 // Node.js v18+ recomendado
 
-const API_URL = 'http://localhost:8081'; // Cambia por la URL de tu microservicio
+const API_URL = 'http://10.6.46.114:8080'; // Cambia por la URL de tu microservicio
 const API_TOKEN = 'demo'; // Cambia por tu token
 
 async function testPing() {
