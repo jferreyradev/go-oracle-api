@@ -13,8 +13,13 @@ Este microservicio resuelve ese problema actuando como un puente seguro y ligero
 - No requiere que los sistemas consumidores instalen librerías de Oracle.
 - Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
 - Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
+- **Soporte completo para procedimientos y funciones de paquetes Oracle**.
+- **Detección automática de tipos de datos** para parámetros OUT (NUMBER, VARCHAR2).
+- **Manejo inteligente de fechas** con conversión automática desde formatos estándar.
+- **Consultas multilínea** con normalización automática de saltos de línea.
 - Facilita la integración de sistemas modernos (microservicios, aplicaciones web/móviles, otros servicios) con bases de datos Oracle.
 - Seguridad mediante autenticación de token y restricción opcional por IP.
+- **CORS configurado** para integración desde aplicaciones web frontend.
 - Reduce el riesgo de exposición de credenciales o la base de datos a múltiples sistemas.
 
 ## Configuración del archivo `.env`
@@ -82,14 +87,55 @@ start go-oracle-api.exe .env2 8082
 
 Cada instancia usará su propia configuración y escuchará en el puerto indicado.
 
-## Uso
+## Endpoints disponibles
 
-Consulta la guía completa de uso y endpoints en [USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)
+- **`/ping`** - Verificación de estado y conectividad con Oracle
+- **`/query`** - Ejecutar consultas SELECT (soporta multilínea)
+- **`/exec`** - Ejecutar sentencias de modificación (INSERT, UPDATE, DELETE, DDL)
+- **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle
+- **`/upload`** - Subir archivos como BLOB a la base de datos
+- **`/logs`** - Consultar logs de la API
+- **`/docs`** - Documentación integrada
 
-## Despliegue y Firewall
+## Funcionalidades destacadas
 
-- Instrucciones de despliegue: [DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- Configuración de firewall en Windows: [FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)
+### 🔧 Procedimientos y Funciones de Paquetes
+```json
+{
+  "name": "SCHEMA.PACKAGE.FUNCTION_NAME",
+  "isFunction": true,
+  "params": [
+    { "name": "input_param", "value": 123 },
+    { "name": "result", "direction": "OUT", "type": "number" }
+  ]
+}
+```
+
+### 📅 Manejo Automático de Fechas
+```json
+{
+  "name": "MY_PROCEDURE", 
+  "params": [
+    { "name": "fecha_param", "value": "2025-10-21" },
+    { "name": "periodo", "value": "21/10/2025" }
+  ]
+}
+```
+
+### 📝 Consultas Multilínea
+```json
+{
+  "query": "SELECT campo1, campo2\nFROM mi_tabla\nWHERE condicion = 'valor'"
+}
+```
+
+## Documentación
+
+- **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
+- **[FUNCIONALIDADES_AVANZADAS.md](docs/FUNCIONALIDADES_AVANZADAS.md)** - Funcionalidades avanzadas y buenas prácticas
+- **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue
+- **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall en Windows
 
 ---
 

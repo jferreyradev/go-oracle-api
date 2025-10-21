@@ -135,8 +135,8 @@ async function crearTablaArchivos() {
 // Prueba todos los endpoints principales del microservicio Go Oracle API
 // Node.js v18+ recomendado
 
-const API_URL = 'http://10.6.46.114:8080'; // Cambia por la URL de tu microservicio
-const API_TOKEN = 'demo'; // Cambia por tu token
+const API_URL = 'http://10.6.150.91:8080'; // Cambia por la URL de tu microservicio
+const API_TOKEN = 'test2'; // Cambia por tu token
 
 async function testPing() {
   const res = await fetch(`${API_URL}/ping`, {
@@ -181,6 +181,75 @@ async function testProcedure() {
   }
 }
 
+async function testProcedureWithDate() {
+  console.log('\n=== Prueba: Procedimiento con parámetro DATE ===');
+  // Ejemplo de procedimiento con fecha (reemplaza por uno real de tu BD)
+  const res = await fetch(`${API_URL}/procedure`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${API_TOKEN}`
+    },
+    body: JSON.stringify({
+      name: 'TEST_FECHA_1', // Cambia por tu procedimiento real
+      params: [
+        { name: 'vPERIODO', value: '2025-10-21' },
+        { name: 'vRESULT', direction: 'OUT', type: 'number' }
+      ]
+    })
+  });
+  const result = await res.json();
+  console.log('Procedure with Date:', result);
+  if (result && result.out) {
+    console.log('Resultado con fecha:', result.out);
+  }
+}
+
+async function testPackageFunction() {
+  console.log('\n=== Prueba: Función de paquete ===');
+  // Ejemplo de función de paquete (reemplaza por una real de tu BD)
+  const res = await fetch(`${API_URL}/procedure`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${API_TOKEN}`
+    },
+    body: JSON.stringify({
+      name: 'usuario.TRANSFORMADOR.BUSCA_PERSONA', // Cambia por tu función real
+      isFunction: true,
+      params: [
+        { name: 'vDNI', value: 26579673 },
+        { name: 'resultado', direction: 'OUT' }
+      ]
+    })
+  });
+  const result = await res.json();
+  console.log('Package Function:', result);
+  if (result && result.out) {
+    console.log('Resultado de la función:', result.out);
+  }
+}
+
+async function testQueryMultiline() {
+  console.log('\n=== Prueba: Query multilínea ===');
+  const multilineQuery = `select DNI AS DOC          
+from WORKFLOW.TMP_ADICIONALES_FDO      
+WHERE FECHAEMISION = to_date('01/02/2025','dd/mm/yyyy')`;
+  
+  const res = await fetch(`${API_URL}/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${API_TOKEN}`
+    },
+    body: JSON.stringify({
+      query: multilineQuery
+    })
+  });
+  const result = await res.json();
+  console.log('Multiline Query:', result);
+}
+
 async function testUpload() {
   const filePath = './archivo_prueba.txt';
   let fileData;
@@ -214,14 +283,28 @@ async function testLogs() {
 
 
 async function main() {
+  console.log('=== Iniciando pruebas de la API Go Oracle ===\n');
+  
   await crearTablaArchivos();
   await crearProcedimientoPrueba();
+  
+  console.log('\n=== Pruebas básicas ===');
   await testPing();
   await testQuery();
   await testProcedure();
+  
+  console.log('\n=== Pruebas de nuevas funcionalidades ===');
+  await testQueryMultiline();
+  await testProcedureWithDate();
+  await testPackageFunction();
+  
+  console.log('\n=== Pruebas de archivos y logs ===');
   await testUpload();
   await testLogs();
+  
   await eliminarTablaArchivos();
+  
+  console.log('\n=== Pruebas completadas ===');
 }
 
 main().catch(console.error);

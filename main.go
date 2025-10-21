@@ -376,6 +376,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			Name      string      `json:"name"`
 			Value     interface{} `json:"value,omitempty"`
 			Direction string      `json:"direction,omitempty"`
+			Type      string      `json:"type,omitempty"` // "number", "string", "date"
 		} `json:"params"`
 		IsFunction bool `json:"isFunction,omitempty"`
 	}
@@ -434,13 +435,20 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			placeholders = append(placeholders, fmt.Sprintf(":%d", paramPos))
 			if strings.ToUpper(p.Direction) == "OUT" {
 				lowerName := strings.ToLower(p.Name)
-				if strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") || strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") {
+				// Verificar tipo explícito o inferir por nombre
+				isNumeric := strings.ToLower(p.Type) == "number" ||
+					strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
+					strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
+					strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
+					strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
+
+				if isNumeric {
 					var outNum sql.NullFloat64
 					args = append(args, sql.Out{Dest: &outNum, In: false})
 					outIndexes[paramPos-1] = p.Name
 					outNumMap[paramPos-1] = &outNum
 				} else {
-					outStr := ""
+					outStr := strings.Repeat(" ", 4000) // Buffer de 4000 caracteres
 					args = append(args, sql.Out{Dest: &outStr, In: false})
 					outIndexes[paramPos-1] = p.Name
 					outBuffers[paramPos-1] = &outStr
@@ -489,16 +497,23 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		placeholders = append(placeholders, fmt.Sprintf(":%d", i+1))
 		if strings.ToUpper(p.Direction) == "OUT" {
 			lowerName := strings.ToLower(p.Name)
-			if strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") || strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") {
+			// Verificar tipo explícito o inferir por nombre
+			isNumeric := strings.ToLower(p.Type) == "number" ||
+				strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
+				strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
+				strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
+				strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
+
+			if isNumeric {
 				var outNum sql.NullFloat64
 				args = append(args, sql.Out{Dest: &outNum, In: false})
-				outIndexes[i] = p.Name
-				outNumMap[i] = &outNum
+				outIndexes[0] = p.Name
+				outNumMap[0] = &outNum
 			} else {
-				outStr := ""
+				outStr := strings.Repeat(" ", 4000) // Buffer de 4000 caracteres
 				args = append(args, sql.Out{Dest: &outStr, In: false})
-				outIndexes[i] = p.Name
-				outBuffers[i] = &outStr
+				outIndexes[0] = p.Name
+				outBuffers[0] = &outStr
 			}
 		} else {
 			// Detección automática de fechas por nombre o formato
