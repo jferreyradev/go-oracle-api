@@ -9,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -19,7 +21,26 @@ import (
 )
 
 var db *sql.DB
-var logFileName string // Nombre del log de la instancia
+var logFileName string  // Nombre del log de la instancia
+var instanceName string // Nombre/etiqueta de la instancia
+
+// setWindowTitle cambia el título de la ventana según la plataforma
+func setWindowTitle(title string) {
+	switch runtime.GOOS {
+	case "windows":
+		// Windows: usar cmd title
+		exec.Command("cmd", "/C", "title", title).Run()
+	case "linux":
+		// Linux: escape sequence para terminales compatibles
+		fmt.Printf("\033]0;%s\007", title)
+	case "darwin":
+		// macOS: escape sequence para Terminal.app
+		fmt.Printf("\033]0;%s\007", title)
+	default:
+		// Otras plataformas: no hacer nada o usar escape sequence genérico
+		fmt.Printf("\033]0;%s\007", title)
+	}
+}
 
 // Configuración de la aplicación
 type AppConfig struct {
@@ -102,26 +123,29 @@ func main() {
 	if len(os.Args) > 1 {
 		arg := strings.ToLower(os.Args[1])
 		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`
+			fmt.Print(`
 Go Oracle API - Opciones de ejecución
 
 USO:
-  go run main.go [archivo_env] [puerto]
-  go-oracle-api.exe [archivo_env] [puerto]
+  go run main.go [archivo_env] [puerto] [nombre_instancia]
+  go-oracle-api.exe [archivo_env] [puerto] [nombre_instancia]
 
 Argumentos opcionales:
-  archivo_env   Archivo de variables de entorno (por defecto .env)
-  puerto        Puerto donde escuchará la API (por defecto 8080)
+  archivo_env       Archivo de variables de entorno (por defecto .env)
+  puerto            Puerto donde escuchará la API (por defecto 8080)
+  nombre_instancia  Nombre para identificar esta instancia (por defecto auto)
 
 También puedes usar variables de entorno:
-  ENV_FILE      Archivo de configuración
-  PORT          Puerto de escucha
+  ENV_FILE          Archivo de configuración
+  PORT              Puerto de escucha
+  INSTANCE_NAME     Nombre de la instancia
 
 Ejemplos:
-  go run main.go .env2 9090
-  set ENV_FILE=otro.env
-  set PORT=9090
-  go run main.go
+  go run main.go .env1 8081 "Produccion"
+  go run main.go .env2 8082 "Testing"
+  
+  set INSTANCE_NAME=Desarrollo
+  go run main.go .env3 8083
 
 Para más información consulta:
   - README.md
@@ -133,15 +157,29 @@ Para más información consulta:
 	}
 
 	// ===============================
-	// 2. Configuración de logging
+	// 2. Configuración de logging e identificación de instancia
 	// ===============================
+
+	// Determinar nombre de instancia
+	instanceName = "auto"
+	if len(os.Args) > 3 && os.Args[3] != "" {
+		instanceName = os.Args[3]
+	} else if customInstance := os.Getenv("INSTANCE_NAME"); customInstance != "" {
+		instanceName = customInstance
+	}
 
 	// Crear carpeta log si no existe
 	if _, err := os.Stat("log"); os.IsNotExist(err) {
 		_ = os.Mkdir("log", 0755)
 	}
+
 	// Generar nombre de log único por instancia
-	logFileName = "log/app-" + time.Now().Format("2006-01-02_15-04-05") + ".log"
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	if instanceName != "auto" {
+		logFileName = fmt.Sprintf("log/%s_%s.log", instanceName, timestamp)
+	} else {
+		logFileName = "log/app-" + timestamp + ".log"
+	}
 	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
 		log.SetOutput(logFile) // Solo archivo, no consola
@@ -197,8 +235,17 @@ Para más información consulta:
 	// 8. Resumen de arranque y estado
 	// ===============================
 	fmt.Println("==============================")
+	if instanceName != "auto" {
+		fmt.Printf("INSTANCIA: %s\n", instanceName)
+		// Cambiar título de la ventana según la plataforma
+		setWindowTitle(fmt.Sprintf("Go Oracle API - %s (Puerto %s)", instanceName, port))
+	} else {
+		// Título por defecto
+		setWindowTitle(fmt.Sprintf("Go Oracle API - Puerto %s", port))
+	}
 	fmt.Println("API escuchando en el puerto:", port)
 	fmt.Printf("Conectado a Oracle: usuario=%s host=%s puerto=%s servicio=%s\n", user, host, cfg.OraclePort, service)
+	fmt.Printf("Log de esta instancia: %s\n", logFileName)
 	fmt.Println("==============================")
 	log.Println("==============================")
 	log.Println("Estado de la API al iniciar:")
@@ -826,7 +873,7 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // enableCORS agrega los headers necesarios para CORS
-func enableCORS(w *http.ResponseWriter, r *http.Request) {
+func enableCORS(w *http.ResponseWriter, _ *http.Request) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
 	(*w).Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")

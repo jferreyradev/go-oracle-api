@@ -2,6 +2,8 @@
 # Binarios
 oracle-api
 oracle-api.exe
+go-oracle-api
+go-oracle-api.exe
 *.exe
 *.out
 *.test

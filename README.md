@@ -73,19 +73,60 @@ set PORT=9090
 
 ### Ejecutar varias instancias con diferentes configuraciones
 
-Puedes tener varios archivos `.env` (por ejemplo, `.env1`, `.env2`, etc.) y ejecutar varias instancias de la app, cada una con su propio archivo y puerto:
+Puedes tener varios archivos `.env` (por ejemplo, `.env1`, `.env2`, etc.) y ejecutar varias instancias de la app, cada una con su propio archivo, puerto y nombre identificativo:
 
+#### Método manual:
 ```sh
-start go run main.go .env1 8081
-start go run main.go .env2 8082
-```
-O con ejecutable:
-```sh
-start go-oracle-api.exe .env1 8081
-start go-oracle-api.exe .env2 8082
+# Ventana 1 - Producción
+go run main.go .env1 8081 "Produccion"
+
+# Ventana 2 - Testing  
+go run main.go .env2 8082 "Testing"
+
+# Ventana 3 - Desarrollo
+go run main.go .env3 8083 "Desarrollo"
 ```
 
-Cada instancia usará su propia configuración y escuchará en el puerto indicado.
+#### Con ejecutable compilado:
+```sh
+go build -o go-oracle-api.exe main.go
+
+start go-oracle-api.exe .env1 8081 "Produccion"
+start go-oracle-api.exe .env2 8082 "Testing" 
+start go-oracle-api.exe .env3 8083 "Desarrollo"
+```
+
+#### Script automatizado:
+```sh
+# Windows
+scripts\run_multiple_instances.bat
+scripts\monitor_instances.bat
+
+# Linux/macOS  
+chmod +x scripts/*.sh
+./scripts/run_multiple_instances.sh
+./scripts/monitor_instances.sh
+```
+
+### Identificación de instancias
+
+Cada instancia se identifica de las siguientes maneras:
+
+1. **Título de ventana**: `Go Oracle API - [Nombre] (Puerto XXXX)`
+   - ✅ **Windows**: Título en barra de tareas y ventana CMD
+   - ✅ **Linux/macOS**: Título en terminal (terminales compatibles)
+   - ✅ **Multiplataforma**: Funciona en todas las plataformas
+2. **Log individual**: `log/[Nombre]_YYYY-MM-DD_HH-MM-SS.log`
+3. **Mensaje de inicio**: Muestra el nombre de la instancia en consola
+4. **Puerto único**: Cada instancia escucha en un puerto diferente
+
+### Ventajas del sistema de instancias
+
+- **Logs separados**: Cada instancia tiene su propio archivo de log
+- **Identificación visual**: Títulos de ventana personalizados
+- **Configuración independiente**: Cada instancia usa su propio .env
+- **Monitoreo centralizado**: Scripts para verificar estado y logs
+- **Gestión simplificada**: Detener/iniciar instancias específicas
 
 ## Endpoints disponibles
 
