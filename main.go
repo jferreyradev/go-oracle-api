@@ -67,7 +67,7 @@ func generateJobID() string {
 	return hex.EncodeToString(b)
 }
 
-// CreateJob crea un nuevo job y lo registra
+// CreateJob crea un nuevo job y lo registra (en memoria y BD)
 func (jm *JobManager) CreateJob(procName string) *AsyncJob {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
@@ -80,6 +80,10 @@ func (jm *JobManager) CreateJob(procName string) *AsyncJob {
 		Progress:  0,
 	}
 	jm.jobs[job.ID] = job
+
+	// Guardar en base de datos
+	go jm.saveJobToDB(job)
+
 	return job
 }
 
@@ -103,13 +107,15 @@ func (jm *JobManager) GetAllJobs() []*AsyncJob {
 	return jobs
 }
 
-// UpdateJob actualiza el estado de un job
+// UpdateJob actualiza el estado de un job (en memoria y BD)
 func (jm *JobManager) UpdateJob(id string, updateFn func(*AsyncJob)) {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
 	if job, exists := jm.jobs[id]; exists {
 		updateFn(job)
+		// Actualizar en base de datos
+		go jm.updateJobInDB(job)
 	}
 }
 
@@ -124,6 +130,197 @@ func (jm *JobManager) CleanupOldJobs() {
 			delete(jm.jobs, id)
 		}
 	}
+}
+
+// saveJobToDB guarda un job en la base de datos
+func (jm *JobManager) saveJobToDB(job *AsyncJob) {
+	if db == nil {
+		return
+	}
+
+	_, err := db.Exec(`
+		INSERT INTO ASYNC_JOBS (
+			JOB_ID, STATUS, PROCEDURE_NAME, START_TIME, 
+			END_TIME, DURATION, RESULT, ERROR_MSG, PROGRESS
+		) VALUES (
+			:1, :2, :3, :4, :5, :6, :7, :8, :9
+		)`,
+		job.ID,
+		string(job.Status),
+		job.ProcName,
+		job.StartTime,
+		job.EndTime,
+		job.Duration,
+		nil, // RESULT será actualizado después
+		job.Error,
+		job.Progress,
+	)
+
+	if err != nil {
+		log.Printf("Error guardando job %s en BD: %v", job.ID, err)
+	}
+}
+
+// updateJobInDB actualiza un job en la base de datos
+func (jm *JobManager) updateJobInDB(job *AsyncJob) {
+	if db == nil {
+		return
+	}
+
+	// Convertir resultado a JSON
+	var resultJSON string
+	if job.Result != nil {
+		if jsonBytes, err := json.Marshal(job.Result); err == nil {
+			resultJSON = string(jsonBytes)
+		}
+	}
+
+	_, err := db.Exec(`
+		UPDATE ASYNC_JOBS SET
+			STATUS = :1,
+			END_TIME = :2,
+			DURATION = :3,
+			RESULT = :4,
+			ERROR_MSG = :5,
+			PROGRESS = :6
+		WHERE JOB_ID = :7`,
+		string(job.Status),
+		job.EndTime,
+		job.Duration,
+		resultJSON,
+		job.Error,
+		job.Progress,
+		job.ID,
+	)
+
+	if err != nil {
+		log.Printf("Error actualizando job %s en BD: %v", job.ID, err)
+	}
+}
+
+// LoadJobsFromDB carga jobs desde la base de datos al iniciar
+func (jm *JobManager) LoadJobsFromDB() error {
+	if db == nil {
+		return fmt.Errorf("base de datos no disponible")
+	}
+
+	// Cargar solo jobs de las últimas 24 horas que no estén completados
+	rows, err := db.Query(`
+		SELECT 
+			JOB_ID, STATUS, PROCEDURE_NAME, START_TIME,
+			END_TIME, DURATION, RESULT, ERROR_MSG, PROGRESS
+		FROM ASYNC_JOBS
+		WHERE START_TIME >= SYSDATE - 1
+		ORDER BY START_TIME DESC
+	`)
+
+	if err != nil {
+		// Si la tabla no existe, no es un error crítico
+		if strings.Contains(err.Error(), "ORA-00942") {
+			log.Println("Tabla ASYNC_JOBS no existe. Ejecuta sql/create_async_jobs_table.sql")
+			return nil
+		}
+		return err
+	}
+	defer rows.Close()
+
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	count := 0
+	for rows.Next() {
+		var job AsyncJob
+		var endTime sql.NullTime
+		var duration, resultJSON, errorMsg sql.NullString
+
+		err := rows.Scan(
+			&job.ID,
+			&job.Status,
+			&job.ProcName,
+			&job.StartTime,
+			&endTime,
+			&duration,
+			&resultJSON,
+			&errorMsg,
+			&job.Progress,
+		)
+
+		if err != nil {
+			log.Printf("Error leyendo job: %v", err)
+			continue
+		}
+
+		if endTime.Valid {
+			job.EndTime = &endTime.Time
+		}
+		if duration.Valid {
+			job.Duration = duration.String
+		}
+		if resultJSON.Valid && resultJSON.String != "" {
+			json.Unmarshal([]byte(resultJSON.String), &job.Result)
+		}
+		if errorMsg.Valid {
+			job.Error = errorMsg.String
+		}
+
+		jm.jobs[job.ID] = &job
+		count++
+	}
+
+	if count > 0 {
+		log.Printf("Cargados %d jobs desde la base de datos", count)
+	}
+
+	return nil
+}
+
+// InitializeAsyncJobsTable crea la tabla si no existe
+func InitializeAsyncJobsTable() error {
+	if db == nil {
+		return fmt.Errorf("base de datos no disponible")
+	}
+
+	// Verificar si la tabla existe
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM USER_TABLES WHERE TABLE_NAME = 'ASYNC_JOBS'").Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		log.Println("Tabla ASYNC_JOBS ya existe")
+		return nil
+	}
+
+	// Crear la tabla
+	log.Println("Creando tabla ASYNC_JOBS...")
+
+	createTableSQL := `
+		CREATE TABLE ASYNC_JOBS (
+			JOB_ID VARCHAR2(32) PRIMARY KEY,
+			STATUS VARCHAR2(20) NOT NULL,
+			PROCEDURE_NAME VARCHAR2(200) NOT NULL,
+			START_TIME TIMESTAMP NOT NULL,
+			END_TIME TIMESTAMP,
+			DURATION VARCHAR2(50),
+			RESULT CLOB,
+			ERROR_MSG CLOB,
+			PROGRESS NUMBER DEFAULT 0,
+			CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+
+	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		return fmt.Errorf("error creando tabla ASYNC_JOBS: %v", err)
+	}
+
+	// Crear índices
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_STATUS ON ASYNC_JOBS(STATUS)")
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_START_TIME ON ASYNC_JOBS(START_TIME)")
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_CREATED_AT ON ASYNC_JOBS(CREATED_AT)")
+
+	log.Println("Tabla ASYNC_JOBS creada exitosamente")
+	return nil
 }
 
 // setWindowTitle cambia el título de la ventana según la plataforma
@@ -318,6 +515,19 @@ Para más información consulta:
 	user := cfg.OracleUser
 	host := cfg.OracleHost
 	service := cfg.OracleService
+
+	// ===============================
+	// 5. Inicializar sistema de jobs asíncronos
+	// ===============================
+	// Verificar/crear tabla ASYNC_JOBS
+	if err := InitializeAsyncJobsTable(); err != nil {
+		log.Printf("Advertencia: No se pudo inicializar tabla ASYNC_JOBS: %v", err)
+	}
+
+	// Cargar jobs existentes desde la base de datos
+	if err := jobManager.LoadJobsFromDB(); err != nil {
+		log.Printf("Advertencia: No se pudieron cargar jobs desde BD: %v", err)
+	}
 
 	// ===============================
 	// 7. Detección de IPs locales

@@ -11,6 +11,46 @@ Para procedimientos de larga duración (ETL, reportes pesados, procesamiento bat
 ✅ **Seguimiento de progreso** - Consulta el estado en cualquier momento  
 ✅ **Múltiples ejecuciones paralelas** - Lanza varios procedimientos simultáneamente  
 ✅ **Historial de ejecuciones** - Los jobs se conservan 24 horas  
+✅ **Persistencia en Oracle** - Los jobs sobreviven reinicios de la API
+
+## Persistencia de Jobs
+
+**IMPORTANTE**: Los jobs asíncronos se guardan en la base de datos Oracle en la tabla `ASYNC_JOBS`.
+
+### Características de Persistencia
+
+- **Tabla automática**: Al iniciar la API, se crea automáticamente la tabla `ASYNC_JOBS` si no existe
+- **Carga al inicio**: Al arrancar, la API carga todos los jobs de las últimas 24 horas
+- **Actualización en tiempo real**: Cada cambio de estado se guarda en la base de datos
+- **Consulta desde DB**: Puedes consultar jobs directamente en Oracle si es necesario
+- **Limpieza automática**: Jobs mayores a 24 horas se eliminan automáticamente
+
+### Consultas SQL Disponibles
+
+```sql
+-- Ver todos los jobs activos
+SELECT * FROM V_ASYNC_JOBS_RECENT ORDER BY START_TIME DESC;
+
+-- Ver jobs de un procedimiento específico
+SELECT * FROM ASYNC_JOBS WHERE PROCEDURE_NAME = 'PKG_ETL.PROCESO_LARGO';
+
+-- Ver jobs fallidos
+SELECT * FROM ASYNC_JOBS WHERE STATUS = 'failed' ORDER BY START_TIME DESC;
+
+-- Ver estadísticas de duración
+SELECT 
+  PROCEDURE_NAME,
+  COUNT(*) as total_ejecuciones,
+  AVG((END_TIME - START_TIME) * 24 * 60) as promedio_minutos
+FROM ASYNC_JOBS
+WHERE STATUS = 'completed'
+GROUP BY PROCEDURE_NAME;
+
+-- Limpiar jobs antiguos manualmente
+BEGIN
+  CLEANUP_OLD_ASYNC_JOBS(p_days_old => 7);
+END;
+```
 
 ## Endpoints Disponibles
 
