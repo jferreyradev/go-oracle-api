@@ -173,6 +173,7 @@ Cada instancia se identifica de las siguientes maneras:
 ## Documentación
 
 - **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
+- **[PROCEDIMIENTOS_ASINCRONOS.md](docs/PROCEDIMIENTOS_ASINCRONOS.md)** - Ejecución de procedimientos de larga duración
 - **[FUNCIONALIDADES_AVANZADAS.md](docs/FUNCIONALIDADES_AVANZADAS.md)** - Funcionalidades avanzadas y buenas prácticas
 - **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
 - **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue

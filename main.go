@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +15,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,6 +26,105 @@ import (
 var db *sql.DB
 var logFileName string  // Nombre del log de la instancia
 var instanceName string // Nombre/etiqueta de la instancia
+
+// JobStatus representa el estado de un job asíncrono
+type JobStatus string
+
+const (
+	JobStatusPending   JobStatus = "pending"
+	JobStatusRunning   JobStatus = "running"
+	JobStatusCompleted JobStatus = "completed"
+	JobStatusFailed    JobStatus = "failed"
+)
+
+// AsyncJob representa un job de procedimiento en ejecución
+type AsyncJob struct {
+	ID        string                 `json:"id"`
+	Status    JobStatus              `json:"status"`
+	ProcName  string                 `json:"procedure_name"`
+	StartTime time.Time              `json:"start_time"`
+	EndTime   *time.Time             `json:"end_time,omitempty"`
+	Duration  string                 `json:"duration,omitempty"`
+	Result    map[string]interface{} `json:"result,omitempty"`
+	Error     string                 `json:"error,omitempty"`
+	Progress  int                    `json:"progress"` // 0-100
+}
+
+// JobManager gestiona los jobs asíncronos
+type JobManager struct {
+	jobs map[string]*AsyncJob
+	mu   sync.RWMutex
+}
+
+var jobManager = &JobManager{
+	jobs: make(map[string]*AsyncJob),
+}
+
+// generateJobID genera un ID único para el job
+func generateJobID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// CreateJob crea un nuevo job y lo registra
+func (jm *JobManager) CreateJob(procName string) *AsyncJob {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	job := &AsyncJob{
+		ID:        generateJobID(),
+		Status:    JobStatusPending,
+		ProcName:  procName,
+		StartTime: time.Now(),
+		Progress:  0,
+	}
+	jm.jobs[job.ID] = job
+	return job
+}
+
+// GetJob obtiene un job por su ID
+func (jm *JobManager) GetJob(id string) (*AsyncJob, bool) {
+	jm.mu.RLock()
+	defer jm.mu.RUnlock()
+	job, exists := jm.jobs[id]
+	return job, exists
+}
+
+// GetAllJobs retorna todos los jobs
+func (jm *JobManager) GetAllJobs() []*AsyncJob {
+	jm.mu.RLock()
+	defer jm.mu.RUnlock()
+
+	jobs := make([]*AsyncJob, 0, len(jm.jobs))
+	for _, job := range jm.jobs {
+		jobs = append(jobs, job)
+	}
+	return jobs
+}
+
+// UpdateJob actualiza el estado de un job
+func (jm *JobManager) UpdateJob(id string, updateFn func(*AsyncJob)) {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	if job, exists := jm.jobs[id]; exists {
+		updateFn(job)
+	}
+}
+
+// CleanupOldJobs elimina jobs completados hace más de 24 horas
+func (jm *JobManager) CleanupOldJobs() {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	cutoff := time.Now().Add(-24 * time.Hour)
+	for id, job := range jm.jobs {
+		if job.EndTime != nil && job.EndTime.Before(cutoff) {
+			delete(jm.jobs, id)
+		}
+	}
+}
 
 // setWindowTitle cambia el título de la ventana según la plataforma
 func setWindowTitle(title string) {
@@ -198,6 +300,8 @@ Para más información consulta:
 	http.HandleFunc("/query", logRequest(authMiddleware(queryHandler)))
 	http.HandleFunc("/exec", logRequest(authMiddleware(execHandler)))
 	http.HandleFunc("/procedure", logRequest(authMiddleware(procedureHandler)))
+	http.HandleFunc("/procedure/async", logRequest(authMiddleware(asyncProcedureHandler)))
+	http.HandleFunc("/jobs/", logRequest(authMiddleware(jobsHandler))) // /jobs/{id} y /jobs
 
 	// ===============================
 	// 4. Carga de configuración y conexión a Oracle
@@ -277,13 +381,28 @@ Para más información consulta:
 	fmt.Println("  /query     - Ejecuta una consulta SQL (GET)")
 	fmt.Println("  /exec      - Ejecuta una sentencia SQL (POST)")
 	fmt.Println("  /procedure - Ejecuta un procedimiento almacenado (POST)")
+	fmt.Println("  /procedure/async - Ejecuta un procedimiento en segundo plano (POST)")
+	fmt.Println("  /jobs      - Lista todos los jobs asíncronos (GET)")
+	fmt.Println("  /jobs/{id} - Consulta el estado de un job específico (GET)")
 	fmt.Println("  /upload    - Sube un archivo como BLOB (POST)")
 	fmt.Println("\nPara detalles de uso y ejemplos, consulta la documentación en:")
 	fmt.Println("  - /docs (endpoint)")
 	fmt.Println("  - docs/USO_Y_PRUEBAS.md (archivo)")
 
 	// ===============================
-	// 9. Iniciar servidor HTTP con graceful shutdown
+	// 9. Iniciar limpieza periódica de jobs antiguos
+	// ===============================
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			jobManager.CleanupOldJobs()
+			log.Println("Limpieza de jobs antiguos completada")
+		}
+	}()
+
+	// ===============================
+	// 10. Iniciar servidor HTTP con graceful shutdown
 	// ===============================
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -613,6 +732,235 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
+}
+
+// asyncProcedureHandler ejecuta un procedimiento de forma asíncrona
+func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite POST"})
+		return
+	}
+
+	var req struct {
+		Name       string `json:"name"`
+		IsFunction bool   `json:"isFunction"`
+		Params     []struct {
+			Name      string      `json:"name"`
+			Value     interface{} `json:"value,omitempty"`
+			Direction string      `json:"direction"`
+			Type      string      `json:"type,omitempty"`
+		} `json:"params"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "JSON inválido"})
+		return
+	}
+
+	// Crear el job
+	job := jobManager.CreateJob(req.Name)
+
+	// Responder inmediatamente con el ID del job
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":           "accepted",
+		"job_id":           job.ID,
+		"message":          "Procedimiento ejecutándose en segundo plano",
+		"check_status_url": fmt.Sprintf("/jobs/%s", job.ID),
+	})
+
+	// Ejecutar el procedimiento en una goroutine
+	go func() {
+		// Actualizar estado a running
+		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+			j.Status = JobStatusRunning
+			j.Progress = 10
+		})
+
+		// Preparar parámetros igual que en procedureHandler
+		placeholders := []string{}
+		args := []interface{}{}
+		outIndexes := []string{}
+		outBuffers := make(map[int]*string)
+		outNumMap := make(map[int]*sql.NullFloat64)
+
+		if req.IsFunction {
+			outIdx := 0
+			placeholders = append(placeholders, ":1")
+			ptr := new(string)
+			*ptr = ""
+			outBuffers[outIdx] = ptr
+			args = append(args, sql.Out{Dest: ptr})
+			outIndexes = append(outIndexes, "return_value")
+		}
+
+		for _, p := range req.Params {
+			if p.Direction == "OUT" {
+				outIdx := len(outIndexes)
+				placeholders = append(placeholders, fmt.Sprintf(":%d", len(placeholders)+1))
+
+				// Detección automática de tipo
+				pType := strings.ToLower(p.Type)
+				pNameLower := strings.ToLower(p.Name)
+				isNumber := false
+
+				if pType == "number" || pType == "integer" || pType == "float" {
+					isNumber = true
+				} else if pType == "" {
+					numberKeywords := []string{"resultado", "result", "total", "count", "suma", "num", "int", "id"}
+					for _, kw := range numberKeywords {
+						if strings.Contains(pNameLower, kw) {
+							isNumber = true
+							break
+						}
+					}
+				}
+
+				if isNumber {
+					numPtr := new(sql.NullFloat64)
+					outNumMap[outIdx] = numPtr
+					args = append(args, sql.Out{Dest: numPtr})
+				} else {
+					ptr := new(string)
+					*ptr = strings.Repeat(" ", 4000)
+					outBuffers[outIdx] = ptr
+					args = append(args, sql.Out{Dest: ptr})
+				}
+				outIndexes = append(outIndexes, p.Name)
+			} else {
+				placeholders = append(placeholders, fmt.Sprintf(":%d", len(placeholders)+1))
+
+				// Detección automática de fechas
+				if strings.Contains(strings.ToLower(p.Name), "fecha") || strings.Contains(strings.ToLower(p.Name), "periodo") {
+					var t time.Time
+					var err error
+					if s, ok := p.Value.(string); ok {
+						t, err = time.Parse("2006-01-02", s)
+						if err != nil {
+							t, err = time.Parse("02/01/2006", s)
+						}
+						if err == nil {
+							args = append(args, t)
+							continue
+						}
+					}
+				}
+				args = append(args, p.Value)
+			}
+		}
+
+		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+			j.Progress = 30
+		})
+
+		call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
+
+		stmt, err := db.Prepare(call)
+		if err != nil {
+			endTime := time.Now()
+			jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+				j.Status = JobStatusFailed
+				j.Error = err.Error()
+				j.EndTime = &endTime
+				j.Duration = endTime.Sub(j.StartTime).String()
+				j.Progress = 100
+			})
+			return
+		}
+		defer stmt.Close()
+
+		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+			j.Progress = 50
+		})
+
+		if _, err := stmt.Exec(args...); err != nil {
+			endTime := time.Now()
+			jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+				j.Status = JobStatusFailed
+				j.Error = err.Error()
+				j.EndTime = &endTime
+				j.Duration = endTime.Sub(j.StartTime).String()
+				j.Progress = 100
+			})
+			return
+		}
+
+		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+			j.Progress = 80
+		})
+
+		// Recopilar resultados OUT
+		out := make(map[string]interface{})
+		for i, name := range outIndexes {
+			if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
+				if numPtr.Valid {
+					out[name] = numPtr.Float64
+				} else {
+					out[name] = nil
+				}
+				continue
+			}
+			if ptr, ok := outBuffers[i]; ok && ptr != nil {
+				out[name] = *ptr
+			}
+		}
+
+		// Completado exitosamente
+		endTime := time.Now()
+		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+			j.Status = JobStatusCompleted
+			j.Result = out
+			j.EndTime = &endTime
+			j.Duration = endTime.Sub(j.StartTime).String()
+			j.Progress = 100
+		})
+	}()
+}
+
+// jobsHandler maneja consultas de estado de jobs
+func jobsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/jobs")
+	path = strings.TrimPrefix(path, "/")
+
+	// Si hay un ID, buscar ese job específico
+	if path != "" {
+		job, exists := jobManager.GetJob(path)
+		if !exists {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Job no encontrado"})
+			return
+		}
+		json.NewEncoder(w).Encode(job)
+		return
+	}
+
+	// Sin ID, listar todos los jobs
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite GET"})
+		return
+	}
+
+	jobs := jobManager.GetAllJobs()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total": len(jobs),
+		"jobs":  jobs,
+	})
 }
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {

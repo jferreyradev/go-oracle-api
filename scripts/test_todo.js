@@ -132,8 +132,8 @@ async function crearTablaArchivos() {
   }
 }
 
-const API_URL = 'http://10.6.150.91:8080'; // Cambia por la URL de tu microservicio
-const API_TOKEN = 'test2'; // Cambia por tu token
+const API_URL = 'http://10.6.150.91:3000'; // Cambia por la URL de tu microservicio
+const API_TOKEN = 'test1'; // Cambia por tu token
 
 async function testPing() {
   const res = await fetch(`${API_URL}/ping`, {
