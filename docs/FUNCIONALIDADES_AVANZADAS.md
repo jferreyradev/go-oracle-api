@@ -199,4 +199,4 @@ curl -X POST http://localhost:8080/procedure \
    { "name": "param", "value": 123, "type": "number" }
    ```
 
-6. **Testing**: Utiliza el script `test_todo.js` para validar nuevos procedimientos antes de integrarlos.
+6. **Testing**: Utiliza los scripts en `scripts/` para validar nuevos procedimientos antes de integrarlos.

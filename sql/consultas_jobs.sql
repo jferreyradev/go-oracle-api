@@ -1,0 +1,112 @@
+-- ============================================
+-- Consultas para Ver Jobs Asíncronos
+-- ============================================
+
+-- 1. Ver todos los jobs (últimos 20)
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    STATUS,
+    PROCEDURE_NAME,
+    TO_CHAR(START_TIME, 'DD/MM HH24:MI') as INICIO,
+    TO_CHAR(END_TIME, 'DD/MM HH24:MI') as FIN,
+    DURATION,
+    PROGRESS || '%' as PROGRESO
+FROM ASYNC_JOBS
+ORDER BY START_TIME DESC
+FETCH FIRST 20 ROWS ONLY;
+
+-- 2. Ver jobs de hoy
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    STATUS,
+    PROCEDURE_NAME,
+    TO_CHAR(START_TIME, 'HH24:MI:SS') as HORA,
+    DURATION,
+    PROGRESS
+FROM ASYNC_JOBS
+WHERE TRUNC(START_TIME) = TRUNC(SYSDATE)
+ORDER BY START_TIME DESC;
+
+-- 3. Ver jobs por estado
+SELECT STATUS, COUNT(*) as TOTAL
+FROM ASYNC_JOBS
+GROUP BY STATUS
+ORDER BY TOTAL DESC;
+
+-- 4. Ver jobs en ejecución con progreso
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    PROCEDURE_NAME,
+    TO_CHAR(START_TIME, 'DD/MM HH24:MI') as INICIO,
+    ROUND((SYSDATE - START_TIME) * 24 * 60, 1) || ' min' as TIEMPO_TRANSCURRIDO,
+    PROGRESS || '%' as PROGRESO
+FROM ASYNC_JOBS
+WHERE STATUS = 'running'
+ORDER BY START_TIME;
+
+-- 5. Ver jobs completados con resultado
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    PROCEDURE_NAME,
+    DURATION,
+    RESULT
+FROM ASYNC_JOBS
+WHERE STATUS = 'completed'
+  AND RESULT IS NOT NULL
+ORDER BY START_TIME DESC
+FETCH FIRST 10 ROWS ONLY;
+
+-- 6. Ver jobs fallidos con error
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    PROCEDURE_NAME,
+    TO_CHAR(START_TIME, 'DD/MM HH24:MI') as INICIO,
+    ERROR_MSG
+FROM ASYNC_JOBS
+WHERE STATUS = 'failed'
+ORDER BY START_TIME DESC;
+
+-- 7. Estadísticas por procedimiento
+SELECT 
+    PROCEDURE_NAME,
+    COUNT(*) as TOTAL_EJECUCIONES,
+    COUNT(CASE WHEN STATUS = 'completed' THEN 1 END) as EXITOSOS,
+    COUNT(CASE WHEN STATUS = 'failed' THEN 1 END) as FALLIDOS,
+    ROUND(AVG(CASE 
+        WHEN STATUS = 'completed' AND END_TIME IS NOT NULL
+        THEN (END_TIME - START_TIME) * 24 * 60 
+    END), 2) as PROMEDIO_MINUTOS
+FROM ASYNC_JOBS
+GROUP BY PROCEDURE_NAME
+ORDER BY TOTAL_EJECUCIONES DESC;
+
+-- 8. Ver un job específico con todos los detalles
+-- (Reemplaza 'tu_job_id' con el ID real)
+SELECT 
+    JOB_ID,
+    STATUS,
+    PROCEDURE_NAME,
+    TO_CHAR(START_TIME, 'DD/MM/YYYY HH24:MI:SS') as INICIO,
+    TO_CHAR(END_TIME, 'DD/MM/YYYY HH24:MI:SS') as FIN,
+    DURATION,
+    PROGRESS,
+    RESULT,
+    ERROR_MSG,
+    TO_CHAR(CREATED_AT, 'DD/MM/YYYY HH24:MI:SS') as CREADO
+FROM ASYNC_JOBS
+WHERE JOB_ID = 'tu_job_id';
+
+-- 9. Jobs más lentos
+SELECT 
+    SUBSTR(JOB_ID, 1, 12) as JOB_ID,
+    PROCEDURE_NAME,
+    ROUND((END_TIME - START_TIME) * 24 * 60, 2) as DURACION_MINUTOS,
+    TO_CHAR(START_TIME, 'DD/MM HH24:MI') as INICIO
+FROM ASYNC_JOBS
+WHERE END_TIME IS NOT NULL
+ORDER BY (END_TIME - START_TIME) DESC
+FETCH FIRST 10 ROWS ONLY;
+
+-- 10. Uso de la vista predefinida
+SELECT * FROM V_ASYNC_JOBS_RECENT
+ORDER BY START_TIME DESC;

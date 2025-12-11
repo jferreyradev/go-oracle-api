@@ -133,7 +133,10 @@ Cada instancia se identifica de las siguientes maneras:
 - **`/ping`** - Verificación de estado y conectividad con Oracle
 - **`/query`** - Ejecutar consultas SELECT (soporta multilínea)
 - **`/exec`** - Ejecutar sentencias de modificación (INSERT, UPDATE, DELETE, DDL)
-- **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle
+- **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle (síncrono)
+- **`/procedure/async`** - Ejecutar procedimientos de larga duración en segundo plano
+- **`/jobs/{id}`** - Consultar estado de un job asíncrono
+- **`/jobs`** - Listar todos los jobs asíncronos
 - **`/upload`** - Subir archivos como BLOB a la base de datos
 - **`/logs`** - Consultar logs de la API
 - **`/docs`** - Documentación integrada
@@ -174,6 +177,7 @@ Cada instancia se identifica de las siguientes maneras:
 
 - **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
 - **[PROCEDIMIENTOS_ASINCRONOS.md](docs/PROCEDIMIENTOS_ASINCRONOS.md)** - Ejecución de procedimientos de larga duración
+- **[PERSISTENCIA_JOBS.md](docs/PERSISTENCIA_JOBS.md)** - Persistencia de jobs asíncronos en Oracle
 - **[FUNCIONALIDADES_AVANZADAS.md](docs/FUNCIONALIDADES_AVANZADAS.md)** - Funcionalidades avanzadas y buenas prácticas
 - **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
 - **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue

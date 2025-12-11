@@ -6,6 +6,8 @@ Los jobs asíncronos se persisten automáticamente en Oracle Database, sobrevivi
 
 ## Tabla ASYNC_JOBS
 
+La tabla se **crea automáticamente** al iniciar la API si no existe.
+
 ```sql
 CREATE TABLE ASYNC_JOBS (
     JOB_ID VARCHAR2(32) PRIMARY KEY,
@@ -21,16 +23,16 @@ CREATE TABLE ASYNC_JOBS (
 );
 ```
 
-**Instalación:**
+**Instalación manual (opcional):**
 ```bash
 sqlplus usuario/password@servicio @sql/create_async_jobs_table.sql
 ```
 
 ## Cómo Funciona
 
-1. **Al crear un job** → `saveJobToDB()` guarda en Oracle (asíncrono)
-2. **Al actualizar estado** → `updateJobInDB()` actualiza BD (asíncrono)
-3. **Al iniciar API** → `LoadJobsFromDB()` carga jobs de últimas 24h
+1. **Al iniciar API** → Crea tabla `ASYNC_JOBS` si no existe + carga jobs de últimas 24h
+2. **Al crear un job** → `saveJobToDB()` guarda en Oracle (asíncrono)
+3. **Al actualizar estado** → `updateJobInDB()` actualiza BD (asíncrono)
 
 Las operaciones de BD usan goroutines y no bloquean las respuestas HTTP.
 
@@ -71,35 +73,51 @@ END;
 ## Probar Persistencia
 
 ```bash
-# 1. Crear un job
-curl -X POST http://localhost:3000/procedure/async \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer mi_token_secreto" \
-  -d '{"name": "SUMA_SIMPLE", "params": [{"name": "vA", "value": 10}]}'
+# 1. Crear un job usando Node.js
+node scripts/test_persistencia.js
 
-# 2. Ver en Oracle
-SELECT * FROM ASYNC_JOBS ORDER BY START_TIME DESC FETCH FIRST 1 ROW ONLY;
+# 2. Ver jobs en Oracle (opción 1: script visual)
+node scripts/view_jobs.js
 
-# 3. Reiniciar API
+# 3. Ver jobs en Oracle (opción 2: SQL directo)
+sqlplus usuario/password@servicio @sql/consultas_jobs.sql
 
-# 4. Consultar job - debe seguir existiendo
-curl http://localhost:3000/jobs/{job_id} -H "Authorization: Bearer mi_token_secreto"
+# 4. Reiniciar API y verificar carga
+go run main.go
+# Buscar en log: "✅ Cargados N jobs desde Oracle"
 ```
+
+## Consultar Jobs
+
+**Script interactivo (recomendado):**
+```bash
+node scripts/view_jobs.js
+```
+
+**Consultas SQL directas:**
+Ver `sql/consultas_jobs.sql` con 10 queries predefinidas:
+- Jobs de últimas 24h
+- Jobs por estado
+- Jobs fallidos
+- Duración promedio
+- Y más...
 
 ## Troubleshooting
 
-**"Tabla ASYNC_JOBS no existe"**
-```bash
-sqlplus usuario/password@servicio @sql/create_async_jobs_table.sql
-```
+**"Tabla ASYNC_JOBS no existe al conectar manualmente"**
+- La API la crea automáticamente al iniciar
+- Si necesitas crearla manualmente: `sqlplus usuario/password@servicio @sql/create_async_jobs_table.sql`
 
 **Jobs no se cargan al reiniciar**
-- Verificar que tengan menos de 24 horas
-- Revisar log: buscar "✅ Cargados N jobs desde Oracle"
-- Verificar permisos: `GRANT SELECT ON ASYNC_JOBS TO usuario`
+- Verificar log: buscar "✅ Tabla ASYNC_JOBS ya existe" o "✅ Tabla ASYNC_JOBS creada"
+- Solo se cargan jobs de últimas 24 horas
+- Verificar permisos: `GRANT SELECT, INSERT, UPDATE ON ASYNC_JOBS TO usuario`
 
 ## Recursos
 
-- **Script SQL**: `sql/create_async_jobs_table.sql`
+- **Tabla SQL**: `sql/create_async_jobs_table.sql` (opcional, se crea automáticamente)
+- **Consultas**: `sql/consultas_jobs.sql` (10 queries útiles)
+- **Visualizador**: `scripts/view_jobs.js` (tabla interactiva)
+- **Test**: `scripts/test_persistencia.js` (prueba completa)
 - **Documentación**: `docs/PROCEDIMIENTOS_ASINCRONOS.md`
 - **Test**: `scripts/test_persistencia.js`

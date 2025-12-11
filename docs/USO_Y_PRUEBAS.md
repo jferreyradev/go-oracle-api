@@ -146,12 +146,19 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
   curl -H "Authorization: Bearer <API_TOKEN>" http://localhost:8080/logs
   ```
 
-## Pruebas automáticas
+## Prueba automática completa
 
-Puedes usar el script `test_todo.js` para probar todos los endpoints automáticamente:
+Puedes usar los scripts de prueba disponibles:
 
 ```bash
-node test_todo.js
+# Test rápido de conectividad
+node scripts/test_quick.js
+
+# Test completo de funcionalidad asíncrona
+node scripts/test_async.js
+
+# Test de persistencia (crear job y verificar en BD)
+node scripts/test_persistencia.js
 ```
 
 Asegúrate de tener configurado el archivo `.env` y el microservicio en ejecución.
@@ -235,4 +242,4 @@ async function ejecutarProcedimiento(datos) {
 
 **Nota:** Cambia `<API_TOKEN>` por el token real configurado en tu `.env`.
 
-Para más ejemplos y detalles, revisa el archivo `test_todo.js` y el README principal.
+Para más ejemplos y scripts de prueba, revisa la carpeta `scripts/` y el archivo `scripts/README_TESTS.md`.

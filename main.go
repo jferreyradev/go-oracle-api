@@ -255,6 +255,55 @@ func (jm *JobManager) LoadJobsFromDB() {
 	}
 }
 
+// createTableIfNotExists crea la tabla ASYNC_JOBS si no existe
+func createTableIfNotExists() error {
+	if db == nil {
+		return fmt.Errorf("base de datos no disponible")
+	}
+
+	// Verificar si la tabla existe
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM USER_TABLES WHERE TABLE_NAME = 'ASYNC_JOBS'").Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		log.Println("✅ Tabla ASYNC_JOBS ya existe")
+		return nil
+	}
+
+	// Crear la tabla
+	log.Println("📝 Creando tabla ASYNC_JOBS...")
+
+	createTableSQL := `
+		CREATE TABLE ASYNC_JOBS (
+			JOB_ID VARCHAR2(32) PRIMARY KEY,
+			STATUS VARCHAR2(20) NOT NULL,
+			PROCEDURE_NAME VARCHAR2(200) NOT NULL,
+			START_TIME TIMESTAMP NOT NULL,
+			END_TIME TIMESTAMP,
+			DURATION VARCHAR2(50),
+			RESULT CLOB,
+			ERROR_MSG CLOB,
+			PROGRESS NUMBER DEFAULT 0,
+			CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+
+	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		return fmt.Errorf("error creando tabla: %v", err)
+	}
+
+	// Crear índices
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_STATUS ON ASYNC_JOBS(STATUS)")
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_START_TIME ON ASYNC_JOBS(START_TIME)")
+	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_CREATED_AT ON ASYNC_JOBS(CREATED_AT)")
+
+	log.Println("✅ Tabla ASYNC_JOBS creada exitosamente")
+	return nil
+}
+
 // setWindowTitle cambia el título de la ventana según la plataforma
 func setWindowTitle(title string) {
 	switch runtime.GOOS {
@@ -449,8 +498,11 @@ Para más información consulta:
 	service := cfg.OracleService
 
 	// ===============================
-	// 5. Cargar jobs asíncronos desde Oracle
+	// 5. Inicializar tabla y cargar jobs asíncronos
 	// ===============================
+	if err := createTableIfNotExists(); err != nil {
+		log.Printf("⚠️  No se pudo crear/verificar tabla ASYNC_JOBS: %v", err)
+	}
 	jobManager.LoadJobsFromDB()
 
 	// ===============================
