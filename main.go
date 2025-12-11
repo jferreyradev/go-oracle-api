@@ -474,6 +474,7 @@ Para más información consulta:
 	http.HandleFunc("/docs", docsHandler)
 	http.HandleFunc("/logs", logRequest(authMiddleware(logsHandler)))
 	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
+	http.HandleFunc("/download", logRequest(authMiddleware(downloadHandler)))
 	http.HandleFunc("/ping", logRequest(authMiddleware(pingHandler)))
 	http.HandleFunc("/query", logRequest(authMiddleware(queryHandler)))
 	http.HandleFunc("/exec", logRequest(authMiddleware(execHandler)))
@@ -548,6 +549,7 @@ Para más información consulta:
 	log.Println("- Endpoint de exec: /exec")
 	log.Println("- Endpoint de procedure: /procedure")
 	log.Println("- Endpoint de upload: /upload")
+	log.Println("- Endpoint de download: /download")
 	log.Printf("- Conectado a Oracle: usuario=%s host=%s puerto=%s servicio=%s", user, host, port, service)
 	// Estado de conexión a Oracle
 	if err := db.Ping(); err == nil {
@@ -565,12 +567,14 @@ Para más información consulta:
 	fmt.Println("  /logs      - Consulta el log actual de la instancia")
 	fmt.Println("  /ping      - Prueba de vida de la API (GET)")
 	fmt.Println("  /query     - Ejecuta una consulta SQL (GET)")
-	fmt.Println("  /exec      - Ejecuta una sentencia SQL (POST)")
 	fmt.Println("  /procedure - Ejecuta un procedimiento almacenado (POST)")
 	fmt.Println("  /procedure/async - Ejecuta un procedimiento en segundo plano (POST)")
 	fmt.Println("  /jobs      - Lista todos los jobs asíncronos (GET)")
 	fmt.Println("  /jobs/{id} - Consulta el estado de un job específico (GET)")
 	fmt.Println("  /upload    - Sube un archivo como BLOB (POST)")
+	fmt.Println("  /download  - Descarga un archivo BLOB por ID (GET)")
+	fmt.Println("              Params: id (requerido), table (opcional, default: archivos)")
+	fmt.Println("              Ejemplo: /download?id=123 o /download?id=123&table=documentos")
 	fmt.Println("\nPara detalles de uso y ejemplos, consulta la documentación en:")
 	fmt.Println("  - /docs (endpoint)")
 	fmt.Println("  - docs/USO_Y_PRUEBAS.md (archivo)")
@@ -706,6 +710,76 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "nombre": nombre})
+}
+
+// downloadHandler descarga archivos BLOB desde la base de datos
+func downloadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(&w, r)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite GET"})
+		return
+	}
+
+	// Obtener parámetros de la query
+	id := r.URL.Query().Get("id")
+	table := r.URL.Query().Get("table")
+
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Falta el parámetro 'id'"})
+		return
+	}
+
+	// Tabla por defecto
+	if table == "" {
+		table = "archivos"
+	}
+
+	// Query para obtener el archivo
+	query := fmt.Sprintf("SELECT nombre, contenido FROM %s WHERE id = :1", table)
+
+	var nombre string
+	var contenido []byte
+
+	err := db.QueryRow(query, id).Scan(&nombre, &contenido)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Archivo no encontrado"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Error consultando BD: " + err.Error()})
+		return
+	}
+
+	// Detectar tipo MIME basado en la extensión del archivo
+	contentType := "application/octet-stream"
+	if strings.HasSuffix(strings.ToLower(nombre), ".pdf") {
+		contentType = "application/pdf"
+	} else if strings.HasSuffix(strings.ToLower(nombre), ".jpg") || strings.HasSuffix(strings.ToLower(nombre), ".jpeg") {
+		contentType = "image/jpeg"
+	} else if strings.HasSuffix(strings.ToLower(nombre), ".png") {
+		contentType = "image/png"
+	} else if strings.HasSuffix(strings.ToLower(nombre), ".txt") {
+		contentType = "text/plain"
+	} else if strings.HasSuffix(strings.ToLower(nombre), ".json") {
+		contentType = "application/json"
+	}
+
+	// Configurar headers para la descarga
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", nombre))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(contenido)))
+
+	// Enviar el contenido del archivo
+	w.WriteHeader(http.StatusOK)
+	w.Write(contenido)
 }
 
 // procedureHandler ejecuta un procedimiento almacenado con parámetros IN y OUT
