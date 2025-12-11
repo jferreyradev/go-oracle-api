@@ -1,153 +1,67 @@
-# Ejecutar Tests Asíncronos
+# Tests de Procedimientos Asíncronos
 
-El script `test_async.js` es **compatible con múltiples runtimes**.
+Scripts compatibles con **Deno, Bun y Node.js**.
 
-## 🚀 Opciones de Ejecución
+## Scripts Disponibles
 
-### Con Deno
+- **`test_async.js`** - Tests completos de endpoints asíncronos
+- **`test_demora.js`** - Demo con procedimiento de larga duración
+- **`test_persistencia.js`** - Verifica persistencia en Oracle
+
+## Ejecutar Tests
 
 ```bash
+# Con Deno (recomendado)
 deno run --allow-net scripts/test_async.js
-```
 
-**Ventajas:**
-- ✅ No requiere instalación de dependencias
-- ✅ Fetch nativo incluido
-- ✅ Seguro por defecto (requiere permisos explícitos)
-
-### Con Bun
-
-```bash
+# Con Bun
 bun scripts/test_async.js
-```
 
-**Ventajas:**
-- ✅ Muy rápido
-- ✅ Compatible con Node.js
-- ✅ Fetch nativo incluido
-
-### Con Node.js
-
-```bash
+# Con Node.js (18+)
 node scripts/test_async.js
 ```
 
-**Requisitos:**
-- Node.js 18+ (para fetch nativo)
+## Instalar Runtimes
 
-## 📋 Verificar Instalación
-
-```bash
-# Verificar Deno
-deno --version
-
-# Verificar Bun
-bun --version
-
-# Verificar Node.js
-node --version
-```
-
-## 🔧 Instalación de Runtimes
-
-### Instalar Deno (Windows)
-
+### Deno (Windows)
 ```powershell
-# Con Scoop
-scoop install deno
-
-# Con Chocolatey
-choco install deno
-
-# Manualmente
 irm https://deno.land/install.ps1 | iex
 ```
 
-### Instalar Bun (Windows)
-
+### Bun (Windows)
 ```powershell
-# Instalador de Bun
 powershell -c "irm bun.sh/install.ps1|iex"
 ```
 
-### Instalar Node.js (Windows)
+### Node.js
+Descargar desde: https://nodejs.org/
 
-Descarga desde: https://nodejs.org/
+## Configuración
 
-## 🎯 Ejemplo de Ejecución
+Edita los scripts si usas diferente URL o token:
 
-```powershell
-# Si tienes Deno
-PS> deno run --allow-net scripts/test_async.js
-============================================================
-  PRUEBAS DE PROCEDIMIENTOS ASÍNCRONOS
-============================================================
-
-=== Creando procedimiento de prueba ===
-✅ Procedimiento proc_largo creado
-
-=== Test 1: Ejecución Asíncrona Básica ===
-Iniciando procedimiento que tarda 10 segundos...
-✅ Job iniciado: a8ee0dafa7cb668bc04be8c5489c7d52
-
-Monitoreando progreso...
-🔄 Estado: running     Progreso: 50%
-🔄 Estado: running     Progreso: 80%
-✅ Estado: completed   Progreso: 100%
-
-🎉 Completado en 10.2s
-   Resultado: { resultado: 1000 }
-...
+```javascript
+const API_BASE = 'http://127.0.0.1:3000';
+const TOKEN = 'tu_token';
 ```
 
-## ⚡ Comparación de Rendimiento
+## Troubleshooting
 
-| Runtime | Velocidad Startup | Memoria | Compatibilidad |
-|---------|-------------------|---------|----------------|
-| Deno | ~100ms | ~20MB | ✅ Excelente |
-| Bun | ~50ms | ~15MB | ✅ Excelente |
-| Node.js | ~200ms | ~30MB | ✅ Excelente |
-
-## 🐛 Troubleshooting
-
-### Error: fetch is not defined (Node.js < 18)
-
-**Solución:** Actualiza a Node.js 18+ o usa Deno/Bun
-
+**"Connection refused"** → API no está corriendo
 ```bash
-node --version  # Debe ser v18.0.0 o superior
-```
-
-### Error: Deno command not found
-
-**Solución:** Instala Deno o agrega al PATH
-
-```powershell
-# Verificar instalación
-deno --version
-
-# Si no está instalado
-irm https://deno.land/install.ps1 | iex
-
-# Agregar al PATH
-$env:Path += ";$HOME\.deno\bin"
-```
-
-### Error: Connection refused
-
-**Solución:** Asegúrate de que la API esté corriendo
-
-```bash
-# En otra terminal
 .\go-oracle-api.exe
 ```
 
-## 📝 Configuración
+**"fetch is not defined"** (Node.js) → Actualizar a Node.js 18+
+```bash
+node --version  # Debe ser v18+
+```
 
-Si tu API usa diferente URL o token, edita el script:
+**"Deno command not found"** → Agregar al PATH o reinstalar
+```powershell
+$env:Path += ";$HOME\.deno\bin"
+```
 
-```javascript
-const API_URL = 'http://10.6.150.91:3000';  // Cambiar aquí
 const API_TOKEN = 'test1';                   // Cambiar aquí
 ```
 
