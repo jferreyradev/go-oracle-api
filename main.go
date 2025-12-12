@@ -42,12 +42,27 @@ type AsyncJob struct {
 	ID        string                 `json:"id"`
 	Status    JobStatus              `json:"status"`
 	ProcName  string                 `json:"procedure_name"`
+	Params    map[string]interface{} `json:"params,omitempty"`
 	StartTime time.Time              `json:"start_time"`
 	EndTime   *time.Time             `json:"end_time,omitempty"`
 	Duration  string                 `json:"duration,omitempty"`
 	Result    map[string]interface{} `json:"result,omitempty"`
 	Error     string                 `json:"error,omitempty"`
 	Progress  int                    `json:"progress"` // 0-100
+}
+
+// QueryLog representa un registro de consulta ejecutada
+type QueryLog struct {
+	ID            string    `json:"id"`
+	QueryType     string    `json:"query_type"` // QUERY, EXEC, PROCEDURE
+	QueryText     string    `json:"query_text"`
+	Params        string    `json:"params,omitempty"`
+	ExecutionTime time.Time `json:"execution_time"`
+	Duration      string    `json:"duration"`
+	RowsAffected  int64     `json:"rows_affected"`
+	Success       bool      `json:"success"`
+	ErrorMsg      string    `json:"error_msg,omitempty"`
+	UserIP        string    `json:"user_ip,omitempty"`
 }
 
 // JobManager gestiona los jobs asíncronos
@@ -68,7 +83,7 @@ func generateJobID() string {
 }
 
 // CreateJob crea un nuevo job y lo registra (en memoria y BD)
-func (jm *JobManager) CreateJob(procName string) *AsyncJob {
+func (jm *JobManager) CreateJob(procName string, params map[string]interface{}) *AsyncJob {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
@@ -76,6 +91,7 @@ func (jm *JobManager) CreateJob(procName string) *AsyncJob {
 		ID:        generateJobID(),
 		Status:    JobStatusPending,
 		ProcName:  procName,
+		Params:    params,
 		StartTime: time.Now(),
 		Progress:  0,
 	}
@@ -138,16 +154,25 @@ func (jm *JobManager) saveJobToDB(job *AsyncJob) {
 		return
 	}
 
+	// Convertir parámetros a JSON
+	var paramsJSON string
+	if job.Params != nil {
+		if jsonBytes, err := json.Marshal(job.Params); err == nil {
+			paramsJSON = string(jsonBytes)
+		}
+	}
+
 	_, err := db.Exec(`
 		INSERT INTO ASYNC_JOBS (
-			JOB_ID, STATUS, PROCEDURE_NAME, START_TIME, 
+			JOB_ID, STATUS, PROCEDURE_NAME, PARAMS, START_TIME, 
 			END_TIME, DURATION, RESULT, ERROR_MSG, PROGRESS
 		) VALUES (
-			:1, :2, :3, :4, :5, :6, :7, :8, :9
+			:1, :2, :3, :4, :5, :6, :7, :8, :9, :10
 		)`,
 		job.ID,
 		string(job.Status),
 		job.ProcName,
+		paramsJSON,
 		job.StartTime,
 		job.EndTime,
 		job.Duration,
@@ -205,7 +230,7 @@ func (jm *JobManager) LoadJobsFromDB() {
 	}
 
 	rows, err := db.Query(`
-		SELECT JOB_ID, STATUS, PROCEDURE_NAME, START_TIME,
+		SELECT JOB_ID, STATUS, PROCEDURE_NAME, PARAMS, START_TIME,
 		       END_TIME, DURATION, RESULT, ERROR_MSG, PROGRESS
 		FROM ASYNC_JOBS
 		WHERE START_TIME >= SYSDATE - 1
@@ -227,9 +252,9 @@ func (jm *JobManager) LoadJobsFromDB() {
 	for rows.Next() {
 		var job AsyncJob
 		var endTime sql.NullTime
-		var duration, resultJSON, errorMsg sql.NullString
+		var duration, paramsJSON, resultJSON, errorMsg sql.NullString
 
-		err := rows.Scan(&job.ID, &job.Status, &job.ProcName, &job.StartTime,
+		err := rows.Scan(&job.ID, &job.Status, &job.ProcName, &paramsJSON, &job.StartTime,
 			&endTime, &duration, &resultJSON, &errorMsg, &job.Progress)
 
 		if err == nil {
@@ -238,6 +263,9 @@ func (jm *JobManager) LoadJobsFromDB() {
 			}
 			if duration.Valid {
 				job.Duration = duration.String
+			}
+			if paramsJSON.Valid && paramsJSON.String != "" {
+				json.Unmarshal([]byte(paramsJSON.String), &job.Params)
 			}
 			if resultJSON.Valid && resultJSON.String != "" {
 				json.Unmarshal([]byte(resultJSON.String), &job.Result)
@@ -281,6 +309,7 @@ func createTableIfNotExists() error {
 			JOB_ID VARCHAR2(32) PRIMARY KEY,
 			STATUS VARCHAR2(20) NOT NULL,
 			PROCEDURE_NAME VARCHAR2(200) NOT NULL,
+			PARAMS CLOB,
 			START_TIME TIMESTAMP NOT NULL,
 			END_TIME TIMESTAMP,
 			DURATION VARCHAR2(50),
@@ -302,6 +331,97 @@ func createTableIfNotExists() error {
 
 	log.Println("✅ Tabla ASYNC_JOBS creada exitosamente")
 	return nil
+}
+
+// createQueryLogTable crea la tabla QUERY_LOG si no existe
+func createQueryLogTable() error {
+	// Verificar si la tabla existe
+	var tableName string
+	err := db.QueryRow("SELECT table_name FROM user_tables WHERE table_name = 'QUERY_LOG'").Scan(&tableName)
+	if err == nil {
+		log.Println("✅ Tabla QUERY_LOG ya existe")
+		return nil
+	}
+
+	log.Println("📝 Creando tabla QUERY_LOG...")
+
+	createTableSQL := `
+		CREATE TABLE QUERY_LOG (
+			LOG_ID VARCHAR2(32) PRIMARY KEY,
+			QUERY_TYPE VARCHAR2(20) NOT NULL,
+			QUERY_TEXT CLOB NOT NULL,
+			PARAMS CLOB,
+			EXECUTION_TIME TIMESTAMP NOT NULL,
+			DURATION VARCHAR2(50),
+			ROWS_AFFECTED NUMBER,
+			SUCCESS NUMBER(1) DEFAULT 1,
+			ERROR_MSG CLOB,
+			USER_IP VARCHAR2(50),
+			CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`
+
+	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		return fmt.Errorf("error creando tabla QUERY_LOG: %v", err)
+	}
+
+	// Crear índices
+	db.Exec("CREATE INDEX IDX_QUERY_LOG_TYPE ON QUERY_LOG(QUERY_TYPE)")
+	db.Exec("CREATE INDEX IDX_QUERY_LOG_TIME ON QUERY_LOG(EXECUTION_TIME)")
+	db.Exec("CREATE INDEX IDX_QUERY_LOG_SUCCESS ON QUERY_LOG(SUCCESS)")
+	db.Exec("CREATE INDEX IDX_QUERY_LOG_CREATED ON QUERY_LOG(CREATED_AT)")
+
+	log.Println("✅ Tabla QUERY_LOG creada exitosamente")
+	return nil
+}
+
+// saveQueryLog guarda un registro de consulta en la base de datos
+func saveQueryLog(qlog *QueryLog) {
+	startTime := time.Now()
+
+	// Preparar valores para INSERT
+	successInt := 0
+	if qlog.Success {
+		successInt = 1
+	}
+
+	query := `
+		INSERT INTO QUERY_LOG (
+			LOG_ID, QUERY_TYPE, QUERY_TEXT, PARAMS,
+			EXECUTION_TIME, DURATION, ROWS_AFFECTED,
+			SUCCESS, ERROR_MSG, USER_IP, CREATED_AT
+		) VALUES (
+			:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, CURRENT_TIMESTAMP
+		)`
+
+	_, err := db.Exec(query,
+		qlog.ID,
+		qlog.QueryType,
+		qlog.QueryText,
+		qlog.Params,
+		qlog.ExecutionTime,
+		qlog.Duration,
+		qlog.RowsAffected,
+		successInt,
+		qlog.ErrorMsg,
+		qlog.UserIP,
+	)
+
+	if err != nil {
+		log.Printf("Error guardando query log %s en BD: %v", qlog.ID, err)
+	} else {
+		elapsed := time.Since(startTime)
+		if elapsed > 100*time.Millisecond {
+			log.Printf("⚠️  saveQueryLog tardó %v para log %s", elapsed, qlog.ID)
+		}
+	}
+}
+
+// generateID genera un ID único para los logs
+func generateID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 // setWindowTitle cambia el título de la ventana según la plataforma
@@ -393,7 +513,18 @@ func loadConfig() AppConfig {
 // Abre la conexión a Oracle y la retorna
 func openOracleConnection(cfg AppConfig) (*sql.DB, error) {
 	dsn := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", cfg.OracleUser, cfg.OraclePassword, cfg.OracleHost, cfg.OraclePort, cfg.OracleService)
-	return sql.Open("oracle", dsn)
+	database, err := sql.Open("oracle", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Configurar pool de conexiones para procedimientos largos
+	database.SetMaxOpenConns(25)                  // Máximo de conexiones abiertas
+	database.SetMaxIdleConns(5)                   // Conexiones idle
+	database.SetConnMaxLifetime(0)                // Sin límite de tiempo de vida (0 = infinito)
+	database.SetConnMaxIdleTime(10 * time.Minute) // Cerrar idle después de 10 min
+
+	return database, nil
 }
 
 func main() {
@@ -504,6 +635,9 @@ Para más información consulta:
 	if err := createTableIfNotExists(); err != nil {
 		log.Printf("⚠️  No se pudo crear/verificar tabla ASYNC_JOBS: %v", err)
 	}
+	if err := createQueryLogTable(); err != nil {
+		log.Printf("⚠️  No se pudo crear/verificar tabla QUERY_LOG: %v", err)
+	}
 	jobManager.LoadJobsFromDB()
 
 	// ===============================
@@ -612,7 +746,7 @@ Para más información consulta:
 
 	<-quit
 	log.Println("\nSeñal de apagado recibida, cerrando servidor...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Error en shutdown: %v", err)
@@ -817,6 +951,8 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[PROCEDURE] Ejecutando: %s con %d parámetros", req.Name, len(req.Params))
+
 	placeholders := []string{}
 	args := []interface{}{}
 	outIndexes := make(map[int]string)
@@ -963,8 +1099,25 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
 
+	// Crear log
+	startExec := time.Now()
+	paramsJSON, _ := json.Marshal(req.Params)
+	qlog := &QueryLog{
+		ID:            generateID(),
+		QueryType:     "PROCEDURE",
+		QueryText:     req.Name,
+		Params:        string(paramsJSON),
+		ExecutionTime: startExec,
+		UserIP:        r.RemoteAddr,
+	}
+
 	stmt, err := db.Prepare(call)
 	if err != nil {
+		qlog.Success = false
+		qlog.ErrorMsg = err.Error()
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -972,6 +1125,11 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	defer stmt.Close()
 
 	if _, err := stmt.Exec(args...); err != nil {
+		qlog.Success = false
+		qlog.ErrorMsg = err.Error()
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -991,6 +1149,12 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			out[name] = *ptr
 		}
 	}
+
+	qlog.Success = true
+	qlog.RowsAffected = int64(len(out))
+	qlog.Duration = time.Since(startExec).String()
+	go saveQueryLog(qlog)
+
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "out": out})
 }
 
@@ -1025,8 +1189,28 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Crear el job
-	job := jobManager.CreateJob(req.Name)
+	// Preparar parámetros para guardar en el job
+	paramsMap := make(map[string]interface{})
+	paramsMap["name"] = req.Name
+	paramsMap["isFunction"] = req.IsFunction
+	paramsArray := []map[string]interface{}{}
+	for _, p := range req.Params {
+		paramObj := map[string]interface{}{
+			"name":      p.Name,
+			"direction": p.Direction,
+		}
+		if p.Value != nil {
+			paramObj["value"] = p.Value
+		}
+		if p.Type != "" {
+			paramObj["type"] = p.Type
+		}
+		paramsArray = append(paramsArray, paramObj)
+	}
+	paramsMap["params"] = paramsArray
+
+	// Crear el job con los parámetros
+	job := jobManager.CreateJob(req.Name, paramsMap)
 
 	// Responder inmediatamente con el ID del job
 	w.WriteHeader(http.StatusAccepted)
@@ -1039,6 +1223,21 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Ejecutar el procedimiento en una goroutine
 	go func() {
+		// Capturar panics para evitar que el job quede colgado
+		defer func() {
+			if r := recover(); r != nil {
+				endTime := time.Now()
+				jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
+					j.Status = JobStatusFailed
+					j.Error = fmt.Sprintf("Panic recuperado: %v", r)
+					j.EndTime = &endTime
+					j.Duration = endTime.Sub(j.StartTime).String()
+					j.Progress = 100
+				})
+				log.Printf("❌ Panic en job %s: %v", job.ID, r)
+			}
+		}()
+
 		// Actualizar estado a running
 		jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
 			j.Status = JobStatusRunning
@@ -1268,8 +1467,37 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	// Normalizar saltos de línea: reemplazar \r\n y \n por salto de línea real
 	normalizedQuery := strings.ReplaceAll(req.Query, "\r\n", "\n")
 	normalizedQuery = strings.ReplaceAll(normalizedQuery, "\\n", "\n")
+
+	// Detectar si es una consulta de log (evitar recursión)
+	upperQuery := strings.ToUpper(normalizedQuery)
+	isLogQuery := strings.Contains(upperQuery, "FROM QUERY_LOG") ||
+		strings.Contains(upperQuery, "FROM ASYNC_JOBS") ||
+		strings.Contains(upperQuery, "USER_TABLES")
+
+	// Crear log solo si no es una consulta de log
+	var qlog *QueryLog
+	var startExec time.Time
+	if !isLogQuery {
+		startExec = time.Now()
+		qlog = &QueryLog{
+			ID:            generateID(),
+			QueryType:     "QUERY",
+			QueryText:     normalizedQuery,
+			ExecutionTime: startExec,
+			UserIP:        r.RemoteAddr,
+		}
+	}
+
+	log.Printf("[QUERY] Ejecutando: %s", normalizedQuery)
 	rows, err := db.Query(normalizedQuery)
 	if err != nil {
+		if qlog != nil {
+			qlog.Success = false
+			qlog.ErrorMsg = err.Error()
+			qlog.Duration = time.Since(startExec).String()
+			go saveQueryLog(qlog)
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -1278,6 +1506,13 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 
 	cols, err := rows.Columns()
 	if err != nil {
+		if qlog != nil {
+			qlog.Success = false
+			qlog.ErrorMsg = err.Error()
+			qlog.Duration = time.Since(startExec).String()
+			go saveQueryLog(qlog)
+		}
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -1291,6 +1526,13 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 			columnPointers[i] = &columns[i]
 		}
 		if err := rows.Scan(columnPointers...); err != nil {
+			if qlog != nil {
+				qlog.Success = false
+				qlog.ErrorMsg = err.Error()
+				qlog.Duration = time.Since(startExec).String()
+				go saveQueryLog(qlog)
+			}
+
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
@@ -1307,6 +1549,15 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, rowMap)
 	}
+
+	// Registro exitoso
+	if qlog != nil {
+		qlog.Success = true
+		qlog.RowsAffected = int64(len(results))
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
 }
 
@@ -1408,6 +1659,18 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[EXEC] Ejecutando: %s", req.Query)
+
+	// Crear log
+	startExec := time.Now()
+	qlog := &QueryLog{
+		ID:            generateID(),
+		QueryType:     "EXEC",
+		QueryText:     req.Query,
+		ExecutionTime: startExec,
+		UserIP:        r.RemoteAddr,
+	}
+
 	// Detectar si es un comando de modificación
 	q := req.Query
 	qType := ""
@@ -1427,17 +1690,33 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 	if qType == "exec" {
 		res, err := db.Exec(req.Query)
 		if err != nil {
+			qlog.Success = false
+			qlog.ErrorMsg = err.Error()
+			qlog.Duration = time.Since(startExec).String()
+			go saveQueryLog(qlog)
+
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		rowsAffected, _ := res.RowsAffected()
+
+		qlog.Success = true
+		qlog.RowsAffected = rowsAffected
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+
 		json.NewEncoder(w).Encode(map[string]interface{}{"rows_affected": rowsAffected})
 		return
 	}
 
 	rows, err := db.Query(req.Query)
 	if err != nil {
+		qlog.Success = false
+		qlog.ErrorMsg = err.Error()
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -1446,6 +1725,11 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 
 	columns, err := rows.Columns()
 	if err != nil {
+		qlog.Success = false
+		qlog.ErrorMsg = err.Error()
+		qlog.Duration = time.Since(startExec).String()
+		go saveQueryLog(qlog)
+
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
@@ -1459,6 +1743,11 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 			valuePtrs[i] = &values[i]
 		}
 		if err := rows.Scan(valuePtrs...); err != nil {
+			qlog.Success = false
+			qlog.ErrorMsg = err.Error()
+			qlog.Duration = time.Since(startExec).String()
+			go saveQueryLog(qlog)
+
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
@@ -1477,12 +1766,24 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, rowMap)
 	}
+
+	qlog.Success = true
+	qlog.RowsAffected = int64(len(results))
+	qlog.Duration = time.Since(startExec).String()
+	go saveQueryLog(qlog)
+
 	json.NewEncoder(w).Encode(results)
 }
 
 // enableCORS agrega los headers necesarios para CORS
-func enableCORS(w *http.ResponseWriter, _ *http.Request) {
-	(*w).Header().Set("Access-Control-Allow-Origin", "*")
-	(*w).Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func enableCORS(w *http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		origin = "*"
+	}
+	(*w).Header().Set("Access-Control-Allow-Origin", origin)
+	(*w).Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	(*w).Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	(*w).Header().Set("Access-Control-Allow-Credentials", "true")
+	(*w).Header().Set("Access-Control-Max-Age", "3600")
 }
