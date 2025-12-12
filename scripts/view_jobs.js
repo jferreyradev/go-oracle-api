@@ -80,6 +80,9 @@ async function main() {
       console.log(`   ID: ${lastCompleted.id}`);
       console.log(`   Procedimiento: ${lastCompleted.procedure_name}`);
       console.log(`   Duración: ${lastCompleted.duration}`);
+      if (lastCompleted.params) {
+        console.log(`   Parámetros: ${JSON.stringify(lastCompleted.params, null, 2)}`);
+      }
       console.log(`   Resultado: ${JSON.stringify(lastCompleted.result)}`);
     }
 
