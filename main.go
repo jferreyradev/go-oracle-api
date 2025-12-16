@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -146,6 +147,79 @@ func (jm *JobManager) CleanupOldJobs() {
 			delete(jm.jobs, id)
 		}
 	}
+}
+
+// DeleteJob elimina un job específico por ID (memoria y BD)
+func (jm *JobManager) DeleteJob(id string) error {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	if _, exists := jm.jobs[id]; !exists {
+		return fmt.Errorf("job no encontrado")
+	}
+
+	// Eliminar de memoria
+	delete(jm.jobs, id)
+
+	// Eliminar de BD
+	if db != nil {
+		_, err := db.Exec("DELETE FROM ASYNC_JOBS WHERE JOB_ID = :1", id)
+		if err != nil {
+			log.Printf("Error eliminando job %s de BD: %v", id, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// DeleteJobs elimina múltiples jobs según criterios
+func (jm *JobManager) DeleteJobs(status []string, olderThanDays int) (int, error) {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+
+	var deleted []string
+	cutoff := time.Now().AddDate(0, 0, -olderThanDays)
+
+	for id, job := range jm.jobs {
+		shouldDelete := false
+
+		// Filtro por status
+		if len(status) > 0 {
+			for _, s := range status {
+				if string(job.Status) == s {
+					shouldDelete = true
+					break
+				}
+			}
+		} else if olderThanDays > 0 {
+			// Filtro por fecha
+			if job.StartTime.Before(cutoff) {
+				shouldDelete = true
+			}
+		}
+
+		if shouldDelete {
+			deleted = append(deleted, id)
+		}
+	}
+
+	// Eliminar de memoria
+	for _, id := range deleted {
+		delete(jm.jobs, id)
+	}
+
+	// Eliminar de BD
+	if db != nil && len(deleted) > 0 {
+		for _, id := range deleted {
+			_, err := db.Exec("DELETE FROM ASYNC_JOBS WHERE JOB_ID = :1", id)
+			if err != nil {
+				log.Printf("Error eliminando job %s de BD: %v", id, err)
+			}
+		}
+	}
+
+	return len(deleted), nil
 }
 
 // saveJobToDB guarda un job en la base de datos
@@ -703,8 +777,11 @@ Para más información consulta:
 	fmt.Println("  /query     - Ejecuta una consulta SQL (GET)")
 	fmt.Println("  /procedure - Ejecuta un procedimiento almacenado (POST)")
 	fmt.Println("  /procedure/async - Ejecuta un procedimiento en segundo plano (POST)")
-	fmt.Println("  /jobs      - Lista todos los jobs asíncronos (GET)")
-	fmt.Println("  /jobs/{id} - Consulta el estado de un job específico (GET)")
+	fmt.Println("  /jobs                - Lista todos los jobs asíncronos (GET)")
+	fmt.Println("  /jobs?status=...     - Elimina jobs por status: completed,failed (DELETE)")
+	fmt.Println("  /jobs?older_than=7   - Elimina jobs más antiguos que N días (DELETE)")
+	fmt.Println("  /jobs/{id}           - Consulta el estado de un job específico (GET)")
+	fmt.Println("  /jobs/{id}           - Elimina un job específico (DELETE)")
 	fmt.Println("  /upload    - Sube un archivo como BLOB (POST)")
 	fmt.Println("  /download  - Descarga un archivo BLOB por ID (GET)")
 	fmt.Println("              Params: id (requerido), table (opcional, default: archivos)")
@@ -1396,8 +1473,23 @@ func jobsHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/jobs")
 	path = strings.TrimPrefix(path, "/")
 
-	// Si hay un ID, buscar ese job específico
+	// Si hay un ID, buscar/eliminar ese job específico
 	if path != "" {
+		if r.Method == http.MethodDelete {
+			err := jobManager.DeleteJob(path)
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "Job eliminado correctamente",
+				"job_id":  path,
+			})
+			return
+		}
+
+		// GET de job específico
 		job, exists := jobManager.GetJob(path)
 		if !exists {
 			w.WriteHeader(http.StatusNotFound)
@@ -1408,10 +1500,52 @@ func jobsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sin ID, listar todos los jobs
+	// Sin ID - Listar o eliminar múltiples jobs
+	if r.Method == http.MethodDelete {
+		// DELETE /jobs?status=completed,failed&older_than=7
+		queryParams := r.URL.Query()
+		statusParam := queryParams.Get("status")
+		olderThanParam := queryParams.Get("older_than")
+
+		var statusFilter []string
+		if statusParam != "" {
+			statusFilter = strings.Split(statusParam, ",")
+		}
+
+		olderThan := 0
+		if olderThanParam != "" {
+			if days, err := strconv.Atoi(olderThanParam); err == nil {
+				olderThan = days
+			}
+		}
+
+		// Validar que al menos un filtro esté presente
+		if len(statusFilter) == 0 && olderThan == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Debes especificar al menos un filtro: ?status=completed,failed o ?older_than=7",
+			})
+			return
+		}
+
+		count, err := jobManager.DeleteJobs(statusFilter, olderThan)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": "Jobs eliminados correctamente",
+			"deleted": count,
+		})
+		return
+	}
+
+	// GET - Listar todos los jobs
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite GET"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Solo se permite GET o DELETE"})
 		return
 	}
 
