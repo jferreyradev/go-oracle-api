@@ -6,11 +6,17 @@ Proxy transparente con autenticación y rate limiting para la API de Oracle.
 
 ```
 proxy/
+├── docs/
+│   ├── PROXY_AUTH.md        # Documentación de autenticación
+│   └── FRONTEND.md          # Documentación del frontend
+├── frontend/
+│   └── index.html           # Interfaz web para testing
+├── tests/
+│   ├── test_auth.js         # Tests de autenticación
+│   ├── test_all_endpoints.js # Tests de todos los endpoints
+│   ├── test_proxy_complete.js # Tests completos del proxy
+│   └── test_proxy.js        # Tests básicos
 ├── proxy.ts                 # Servidor proxy principal
-├── test_auth.js             # Tests de autenticación
-├── test_proxy_complete.js   # Tests completos del proxy
-├── test_all_endpoints.js    # Tests de todos los endpoints
-├── PROXY_AUTH.md            # Documentación completa
 └── README.md                # Este archivo
 ```
 
@@ -24,6 +30,27 @@ deno run --allow-net --allow-env proxy.ts --port 8000
 # Con puerto personalizado
 deno run --allow-net --allow-env proxy.ts --port 8080
 ```
+
+## 🎨 Frontend Web
+
+Abre `frontend/index.html` en tu navegador para usar la interfaz gráfica:
+
+```bash
+# Windows
+start frontend\index.html
+
+# macOS
+open frontend/index.html
+
+# Linux
+xdg-open frontend/index.html
+```
+
+**Características del frontend:**
+- 🔑 Login con 3 usuarios predefinidos
+- 🚀 8 botones para endpoints comunes
+- 📝 Editor para requests personalizados
+- 📊 Panel de respuestas en tiempo real
 
 ## 🔐 Autenticación
 
@@ -51,14 +78,17 @@ curl http://localhost:8000/ping \
 ## 🧪 Tests
 
 ```bash
+# Ejecutar tests (Node.js)
+cd tests
+
 # Test de autenticación
-deno run --allow-net test_auth.js
+node test_auth.js
 
 # Test completo del proxy
-deno run --allow-net test_proxy_complete.js
+node test_proxy_complete.js
 
 # Test de todos los endpoints
-deno run --allow-net test_all_endpoints.js
+node test_all_endpoints.js
 ```
 
 ## 📊 Endpoints Especiales
@@ -67,6 +97,12 @@ deno run --allow-net test_all_endpoints.js
 - `POST /logout` - Cerrar sesión
 - `GET /_proxy/stats` - Estadísticas del proxy
 - `GET /_proxy/users` - Usuarios disponibles
+
+## 📚 Documentación
+
+- **[docs/PROXY_AUTH.md](docs/PROXY_AUTH.md)** - Sistema de autenticación completo
+- **[docs/FRONTEND.md](docs/FRONTEND.md)** - Guía del frontend web
+- **[../GUIA_RAPIDA.md](../GUIA_RAPIDA.md)** - Guía rápida de uso
 
 ## ⚙️ Configuración
 

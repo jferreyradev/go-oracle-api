@@ -382,7 +382,7 @@ node scripts/view_status.js logs
 ### Tests del proxy
 
 ```bash
-cd proxy
+cd proxy/tests
 
 # Test de autenticación
 node test_auth.js
@@ -393,6 +393,10 @@ node test_all_endpoints.js
 # Test de integración completa
 node test_proxy_complete.js
 ```
+
+### Frontend Web
+
+Abre `proxy/frontend/index.html` en tu navegador para usar la interfaz gráfica.
 
 ---
 
