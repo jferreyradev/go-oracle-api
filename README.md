@@ -97,13 +97,11 @@ start go-oracle-api.exe .env3 8083 "Desarrollo"
 ```
 
 #### Script automatizado:
-```sh
-# Windows
-scripts\run_multiple_instances.bat
-scripts\monitor_instances.bat
-
-# Linux/macOS  
+```bash
+# Dar permisos de ejecución (primera vez)
 chmod +x scripts/*.sh
+
+# Ejecutar scripts
 ./scripts/run_multiple_instances.sh
 ./scripts/monitor_instances.sh
 ```
@@ -135,11 +133,40 @@ Cada instancia se identifica de las siguientes maneras:
 - **`/exec`** - Ejecutar sentencias de modificación (INSERT, UPDATE, DELETE, DDL)
 - **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle (síncrono)
 - **`/procedure/async`** - Ejecutar procedimientos de larga duración en segundo plano
-- **`/jobs/{id}`** - Consultar estado de un job asíncrono
-- **`/jobs`** - Listar todos los jobs asíncronos
+- **`/jobs/{id}`** - Consultar estado de un job asíncrono específico
+- **`/jobs`** - Listar y gestionar jobs asíncronos (GET, DELETE)
 - **`/upload`** - Subir archivos como BLOB a la base de datos
-- **`/logs`** - Consultar logs de la API
+- **`/logs`** - Consultar logs de consultas ejecutadas
 - **`/docs`** - Documentación integrada
+
+### 📋 Sistema de Jobs Asíncronos
+
+El sistema de jobs permite ejecutar procedimientos en segundo plano con monitoreo en tiempo real:
+
+```javascript
+// Crear job
+const res = await fetch('/procedure/async', {
+  method: 'POST',
+  body: JSON.stringify({
+    name: "PROC_LARGO",
+    params: [{ name: "p1", value: 100 }]
+  })
+});
+const { job_id } = await res.json();
+
+// Monitorear progreso
+const job = await fetch(`/jobs/${job_id}`).then(r => r.json());
+console.log(`Estado: ${job.status} (${job.progress}%)`);
+```
+
+**Características:**
+- ✅ Ejecución no bloqueante
+- ✅ Progreso en tiempo real (0-100%)
+- ✅ Persistencia en Oracle (sobrevive a reinicios)
+- ✅ Limpieza automática de jobs antiguos
+- ✅ Mensajes de error mejorados
+
+**Documentación completa:** [docs/ASYNC_JOBS.md](docs/ASYNC_JOBS.md)
 
 ## Funcionalidades destacadas
 
@@ -175,6 +202,7 @@ Cada instancia se identifica de las siguientes maneras:
 
 ## Documentación
 
+- **[ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - ⭐ Sistema completo de jobs asíncronos
 - **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
 - **[PROCEDIMIENTOS_ASINCRONOS.md](docs/PROCEDIMIENTOS_ASINCRONOS.md)** - Ejecución de procedimientos de larga duración
 - **[PERSISTENCIA_JOBS.md](docs/PERSISTENCIA_JOBS.md)** - Persistencia de jobs asíncronos en Oracle
@@ -182,6 +210,12 @@ Cada instancia se identifica de las siguientes maneras:
 - **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
 - **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue
 - **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall en Windows
+
+### 🔧 Scripts de Utilidad
+
+- **[scripts/test_api.js](scripts/test_api.js)** - Suite de pruebas unificada
+- **[scripts/view_status.js](scripts/view_status.js)** - Monitoreo de jobs y logs
+- **[proxy/](proxy/)** - Proxy server con autenticación y rate limiting
 
 ---
 

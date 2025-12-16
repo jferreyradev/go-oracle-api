@@ -1101,15 +1101,33 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 		stmt, err := db.Prepare(call)
 		if err != nil {
+			errorMsg := err.Error()
+
+			// Mejorar el mensaje de error
+			if strings.Contains(errorMsg, "PLS-00201") {
+				errorMsg = fmt.Sprintf("Función '%s' no encontrada. Verifica que existe en la base de datos.", req.Name)
+			} else if strings.Contains(errorMsg, "PLS-00306") {
+				errorMsg = fmt.Sprintf("Parámetros incorrectos para '%s'. Verifica tipos y cantidad de parámetros.", req.Name)
+			}
+
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": errorMsg})
 			return
 		}
 		defer stmt.Close()
 
 		if _, err := stmt.Exec(args...); err != nil {
+			errorMsg := err.Error()
+
+			// Mejorar mensajes de error comunes
+			if strings.Contains(errorMsg, "ORA-06502") {
+				errorMsg = "Error de conversión de tipos. Verifica que los tipos de datos sean correctos."
+			} else if strings.Contains(errorMsg, "ORA-01403") {
+				errorMsg = "No se encontraron datos. La función no retornó resultados."
+			}
+
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": errorMsg})
 			return
 		}
 
@@ -1190,25 +1208,43 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	stmt, err := db.Prepare(call)
 	if err != nil {
+		errorMsg := err.Error()
+
+		// Mejorar el mensaje de error
+		if strings.Contains(errorMsg, "PLS-00201") {
+			errorMsg = fmt.Sprintf("Procedimiento '%s' no encontrado. Verifica que existe en la base de datos.", req.Name)
+		} else if strings.Contains(errorMsg, "PLS-00306") {
+			errorMsg = fmt.Sprintf("Parámetros incorrectos para '%s'. Verifica tipos y cantidad de parámetros.", req.Name)
+		}
+
 		qlog.Success = false
-		qlog.ErrorMsg = err.Error()
+		qlog.ErrorMsg = errorMsg
 		qlog.Duration = time.Since(startExec).String()
 		go saveQueryLog(qlog)
 
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{"error": errorMsg})
 		return
 	}
 	defer stmt.Close()
 
 	if _, err := stmt.Exec(args...); err != nil {
+		errorMsg := err.Error()
+
+		// Mejorar mensajes de error comunes
+		if strings.Contains(errorMsg, "ORA-06502") {
+			errorMsg = "Error de conversión de tipos. Verifica que los tipos de datos sean correctos."
+		} else if strings.Contains(errorMsg, "ORA-01403") {
+			errorMsg = "No se encontraron datos. El procedimiento no retornó resultados."
+		}
+
 		qlog.Success = false
-		qlog.ErrorMsg = err.Error()
+		qlog.ErrorMsg = errorMsg
 		qlog.Duration = time.Since(startExec).String()
 		go saveQueryLog(qlog)
 
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		json.NewEncoder(w).Encode(map[string]string{"error": errorMsg})
 		return
 	}
 
@@ -1402,9 +1438,18 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 		stmt, err := db.Prepare(call)
 		if err != nil {
 			endTime := time.Now()
+			errorMsg := err.Error()
+
+			// Mejorar el mensaje de error para procedimientos no encontrados
+			if strings.Contains(errorMsg, "PLS-00201") {
+				errorMsg = fmt.Sprintf("Procedimiento '%s' no encontrado. Verifica que existe en la base de datos.", req.Name)
+			} else if strings.Contains(errorMsg, "PLS-00306") {
+				errorMsg = fmt.Sprintf("Parámetros incorrectos para '%s'. Verifica tipos y cantidad de parámetros.", req.Name)
+			}
+
 			jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
 				j.Status = JobStatusFailed
-				j.Error = err.Error()
+				j.Error = errorMsg
 				j.EndTime = &endTime
 				j.Duration = endTime.Sub(j.StartTime).String()
 				j.Progress = 100
@@ -1419,9 +1464,18 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := stmt.Exec(args...); err != nil {
 			endTime := time.Now()
+			errorMsg := err.Error()
+
+			// Mejorar mensajes de error comunes
+			if strings.Contains(errorMsg, "ORA-06502") {
+				errorMsg = "Error de conversión de tipos. Verifica que los tipos de datos sean correctos."
+			} else if strings.Contains(errorMsg, "ORA-01403") {
+				errorMsg = "No se encontraron datos. El procedimiento no retornó resultados."
+			}
+
 			jobManager.UpdateJob(job.ID, func(j *AsyncJob) {
 				j.Status = JobStatusFailed
-				j.Error = err.Error()
+				j.Error = errorMsg
 				j.EndTime = &endTime
 				j.Duration = endTime.Sub(j.StartTime).String()
 				j.Progress = 100

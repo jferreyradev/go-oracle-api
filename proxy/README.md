@@ -1,0 +1,97 @@
+# Proxy Server - go-oracle-api
+
+Proxy transparente con autenticación y rate limiting para la API de Oracle.
+
+## 📁 Estructura
+
+```
+proxy/
+├── proxy.ts                 # Servidor proxy principal
+├── test_auth.js             # Tests de autenticación
+├── test_proxy_complete.js   # Tests completos del proxy
+├── test_all_endpoints.js    # Tests de todos los endpoints
+├── PROXY_AUTH.md            # Documentación completa
+└── README.md                # Este archivo
+```
+
+## 🚀 Inicio Rápido
+
+```bash
+# Iniciar el proxy
+cd proxy
+deno run --allow-net --allow-env proxy.ts --port 8000
+
+# Con puerto personalizado
+deno run --allow-net --allow-env proxy.ts --port 8080
+```
+
+## 🔐 Autenticación
+
+### Login
+```bash
+curl -X POST http://localhost:8000/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+```
+
+### Usar Token
+```bash
+curl http://localhost:8000/ping \
+  -H "Authorization: Bearer <tu-token>"
+```
+
+## 👥 Usuarios Disponibles
+
+| Usuario | Password  | Rol      | Permisos           |
+|---------|-----------|----------|--------------------|
+| admin   | admin123  | admin    | Lectura/Escritura  |
+| user    | user123   | user     | Lectura/Escritura  |
+| demo    | demo      | readonly | Solo Lectura       |
+
+## 🧪 Tests
+
+```bash
+# Test de autenticación
+deno run --allow-net test_auth.js
+
+# Test completo del proxy
+deno run --allow-net test_proxy_complete.js
+
+# Test de todos los endpoints
+deno run --allow-net test_all_endpoints.js
+```
+
+## 📊 Endpoints Especiales
+
+- `POST /login` - Obtener token
+- `POST /logout` - Cerrar sesión
+- `GET /_proxy/stats` - Estadísticas del proxy
+- `GET /_proxy/users` - Usuarios disponibles
+
+## ⚙️ Configuración
+
+```bash
+# Variables de entorno
+export API_URL="http://localhost:3000"
+export API_TOKEN="test1"
+
+# O parámetros
+deno run --allow-net --allow-env proxy.ts \
+  --port 8000 \
+  --api http://10.6.150.91:3000
+```
+
+## 📚 Documentación Completa
+
+Ver [PROXY_AUTH.md](PROXY_AUTH.md) para documentación detallada.
+
+## ✨ Características
+
+- ✅ Autenticación con tokens
+- ✅ Control de acceso por roles
+- ✅ Sesiones de 24h con renovación
+- ✅ Rate limiting (100 req/min por IP)
+- ✅ CORS automático
+- ✅ Logging de requests
+- ✅ Estadísticas en tiempo real
+- ✅ Compatible con todos los endpoints de la API
