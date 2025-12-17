@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .auth-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .quick-login {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .endpoints button {
+            width: 100%;
+        }
+
+        .request-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .request-panel textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            resize: vertical;
+            min-height: 150px;
+        }
+
+        .method-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .method-selector button {
+            flex: 1;
+        }
+
+        .method-selector button.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .response-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .response-content {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .response-content.json {
+            color: #a6e22e;
+        }
+
+        .response-content.error {
+            color: #f92672;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .info-box strong {
+            color: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Proxy API Tester</h1>
+            <p>Interfaz de pruebas para el proxy de autenticación Oracle</p>
+        </div>
+
+        <div class="content">
+            <!-- Authentication Section -->
+            <div class="section">
+                <h2 class="section-title">🔐 Autenticación</h2>
+                <div class="auth-panel">
+                    <div class="input-group">
+                        <label for="proxyUrl">URL del Proxy:</label>
+                        <input type="text" id="proxyUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+                    </div>
+                    <div class="input-group">
+                        <label for="username">Usuario:</label>
+                        <input type="text" id="username" placeholder="admin">
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Contraseña:</label>
+                        <input type="password" id="password" placeholder="admin123">
+                    </div>
+                    <button id="loginBtn" class="btn-primary">Iniciar Sesión</button>
+                    <button id="logoutBtn" class="btn-secondary">Cerrar Sesión</button>
+                    
+                    <div class="quick-login">
+                        <strong>Login rápido:</strong>
+                        <button id="adminLogin" class="btn-info">Admin (admin/admin123)</button>
+                        <button id="userLogin" class="btn-info">User (user/user123)</button>
+                        <button id="demoLogin" class="btn-info">Demo (demo/demo)</button>
+                    </div>
+                    
+                    <div id="authStatus"></div>
+                </div>
+
+                <div class="info-box" id="tokenInfo" style="display:none;">
+                    <strong>Token activo:</strong> <span id="tokenDisplay"></span>
+                </div>
+            </div>
+
+            <!-- Quick Endpoints Section -->
+            <div class="section">
+                <h2 class="section-title">⚡ Endpoints Rápidos</h2>
+                <div class="endpoints">
+                    <button id="pingBtn" class="btn-success">🏓 Ping</button>
+                    <button id="queryBtn" class="btn-primary">📊 Query (SELECT)</button>
+                    <button id="procedureBtn" class="btn-primary">⚙️ Procedure</button>
+                    <button id="functionBtn" class="btn-primary">🔧 Function</button>
+                    <button id="asyncBtn" class="btn-warning">⏱️ Async Job</button>
+                    <button id="jobsBtn" class="btn-info">📋 Lista Jobs</button>
+                    <button id="logsBtn" class="btn-info">📝 Logs</button>
+                    <button id="statsBtn" class="btn-info">📈 Stats</button>
+                    <button id="usersBtn" class="btn-info">👥 Users</button>
+                </div>
+            </div>
+
+            <!-- Custom Request Section -->
+            <div class="section">
+                <h2 class="section-title">🛠️ Request Personalizado</h2>
+                <div class="request-panel">
+                    <div class="method-selector">
+                        <button id="methodGet" class="btn-secondary active">GET</button>
+                        <button id="methodPost" class="btn-secondary">POST</button>
+                        <button id="methodPut" class="btn-secondary">PUT</button>
+                        <button id="methodDelete" class="btn-secondary">DELETE</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="endpoint">Endpoint:</label>
+                        <input type="text" id="endpoint" placeholder="/query" value="/query">
+                    </div>
+                    <div class="input-group">
+                        <label for="requestBody">Body (JSON):</label>
+                        <textarea id="requestBody" placeholder='{"query": "SELECT * FROM DUAL"}'></textarea>
+                        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button onclick="loadExample('query')" class="btn-info" style="font-size: 12px; padding: 5px 10px;">📄 Ejemplo Query</button>
+                            <button onclick="loadExample('procedure')" class="btn-info" style="font-size: 12px; padding: 5px 10px;">⚙️ Ejemplo Procedimiento</button>
+                            <button onclick="loadExample('function')" class="btn-info" style="font-size: 12px; padding: 5px 10px;">🔧 Ejemplo Función</button>
+                            <button onclick="loadExample('schema')" class="btn-info" style="font-size: 12px; padding: 5px 10px;">🏢 Ejemplo con Schema</button>
+                        </div>
+                    </div>
+                    <button id="sendBtn" class="btn-primary">Enviar Request</button>
+                </div>
+            </div>
+
+            <!-- Response Section -->
+            <div class="section">
+                <h2 class="section-title">📥 Respuesta</h2>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Procesando request...</p>
+                </div>
+                <div class="response-panel">
+                    <div id="response" class="response-content">
+Esperando request...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State management
+        let currentToken = localStorage.getItem('authToken') || '';
+        let currentMethod = 'GET';
+        let proxyUrl = localStorage.getItem('proxyUrl') || 'http://localhost:8000';
+
+        // DOM elements
+        const elements = {
+            proxyUrl: null,
+            username: null,
+            password: null,
+            loginBtn: null,
+            logoutBtn: null,
+            adminLogin: null,
+            userLogin: null,
+            demoLogin: null,
+            authStatus: null,
+            tokenInfo: null,
+            tokenDisplay: null,
+            pingBtn: null,
+            queryBtn: null,
+            procedureBtn: null,
+            functionBtn: null,
+            asyncBtn: null,
+            jobsBtn: null,
+            logsBtn: null,
+            statsBtn: null,
+            usersBtn: null,
+            methodGet: null,
+            methodPost: null,
+            methodPut: null,
+            methodDelete: null,
+            endpoint: null,
+            requestBody: null,
+            sendBtn: null,
+            loading: null,
+            response: null
+        };
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Initializing Proxy API Tester...');
+            
+            // Get all DOM elements
+            elements.proxyUrl = document.getElementById('proxyUrl');
+            elements.username = document.getElementById('username');
+            elements.password = document.getElementById('password');
+            elements.loginBtn = document.getElementById('loginBtn');
+            elements.logoutBtn = document.getElementById('logoutBtn');
+            elements.adminLogin = document.getElementById('adminLogin');
+            elements.userLogin = document.getElementById('userLogin');
+            elements.demoLogin = document.getElementById('demoLogin');
+            elements.authStatus = document.getElementById('authStatus');
+            elements.tokenInfo = document.getElementById('tokenInfo');
+            elements.tokenDisplay = document.getElementById('tokenDisplay');
+            elements.pingBtn = document.getElementById('pingBtn');
+            elements.queryBtn = document.getElementById('queryBtn');
+            elements.procedureBtn = document.getElementById('procedureBtn');
+            elements.functionBtn = document.getElementById('functionBtn');
+            elements.asyncBtn = document.getElementById('asyncBtn');
+            elements.jobsBtn = document.getElementById('jobsBtn');
+            elements.logsBtn = document.getElementById('logsBtn');
+            elements.statsBtn = document.getElementById('statsBtn');
+            elements.usersBtn = document.getElementById('usersBtn');
+            elements.methodGet = document.getElementById('methodGet');
+            elements.methodPost = document.getElementById('methodPost');
+            elements.methodPut = document.getElementById('methodPut');
+            elements.methodDelete = document.getElementById('methodDelete');
+            elements.endpoint = document.getElementById('endpoint');
+            elements.requestBody = document.getElementById('requestBody');
+            elements.sendBtn = document.getElementById('sendBtn');
+            elements.loading = document.getElementById('loading');
+            elements.response = document.getElementById('response');
+
+            // Set initial values
+            elements.proxyUrl.value = proxyUrl;
+            
+            // Setup event listeners
+            setupEventListeners();
+            
+            // Update UI if token exists
+            if (currentToken) {
+                updateTokenDisplay();
+            }
+            
+            console.log('Initialization complete');
+        });
+
+        function setupEventListeners() {
+            // Auth buttons
+            elements.loginBtn.addEventListener('click', login);
+            elements.logoutBtn.addEventListener('click', logout);
+            elements.adminLogin.addEventListener('click', () => quickLogin('admin', 'admin123'));
+            elements.userLogin.addEventListener('click', () => quickLogin('user', 'user123'));
+            elements.demoLogin.addEventListener('click', () => quickLogin('demo', 'demo'));
+            
+            // Proxy URL change
+            elements.proxyUrl.addEventListener('change', function() {
+                proxyUrl = this.value;
+                localStorage.setItem('proxyUrl', proxyUrl);
+            });
+
+            // Quick endpoint buttons
+            elements.pingBtn.addEventListener('click', testPing);
+            elements.queryBtn.addEventListener('click', testQuery);
+            elements.procedureBtn.addEventListener('click', testProcedure);
+            elements.functionBtn.addEventListener('click', testFunction);
+            elements.asyncBtn.addEventListener('click', testAsync);
+            elements.jobsBtn.addEventListener('click', getJobs);
+            elements.logsBtn.addEventListener('click', getLogs);
+            elements.statsBtn.addEventListener('click', getStats);
+            elements.usersBtn.addEventListener('click', getUsers);
+
+            // Method selector
+            elements.methodGet.addEventListener('click', () => setMethod('GET'));
+            elements.methodPost.addEventListener('click', () => setMethod('POST'));
+            elements.methodPut.addEventListener('click', () => setMethod('PUT'));
+            elements.methodDelete.addEventListener('click', () => setMethod('DELETE'));
+
+            // Send custom request
+            elements.sendBtn.addEventListener('click', sendCustomRequest);
+        }
+
+        function setMethod(method) {
+            currentMethod = method;
+            document.querySelectorAll('.method-selector button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('method' + method.charAt(0) + method.slice(1).toLowerCase()).classList.add('active');
+        }
+
+        async function login() {
+            const username = elements.username.value;
+            const password = elements.password.value;
+            
+            if (!username || !password) {
+                showStatus('Por favor ingrese usuario y contraseña', false);
+                return;
+            }
+
+            try {
+                showLoading(true);
+                const response = await fetch(`${proxyUrl}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                showLoading(false);
+
+                if (response.ok && data.token) {
+                    currentToken = data.token;
+                    localStorage.setItem('authToken', currentToken);
+                    showStatus('✅ Login exitoso', true);
+                    updateTokenDisplay();
+                    displayResponse(data);
+                } else {
+                    showStatus('❌ Login fallido: ' + (data.error || 'Error desconocido'), false);
+                    displayResponse(data);
+                }
+            } catch (error) {
+                showLoading(false);
+                showStatus('❌ Error de conexión: ' + error.message, false);
+                displayResponse({ error: error.message });
+            }
+        }
+
+        function quickLogin(username, password) {
+            elements.username.value = username;
+            elements.password.value = password;
+            login();
+        }
+
+        function logout() {
+            currentToken = '';
+            localStorage.removeItem('authToken');
+            showStatus('Sesión cerrada', true);
+            elements.tokenInfo.style.display = 'none';
+        }
+
+        function updateTokenDisplay() {
+            if (currentToken) {
+                elements.tokenInfo.style.display = 'block';
+                elements.tokenDisplay.textContent = currentToken.substring(0, 20) + '...';
+            } else {
+                elements.tokenInfo.style.display = 'none';
+            }
+        }
+
+        function showStatus(message, isSuccess) {
+            const status = elements.authStatus;
+            status.className = 'status ' + (isSuccess ? 'success' : 'error');
+            status.textContent = message;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        function showLoading(show) {
+            elements.loading.classList.toggle('active', show);
+        }
+
+        function displayResponse(data) {
+            const responseEl = elements.response;
+            
+            if (typeof data === 'object') {
+                responseEl.textContent = JSON.stringify(data, null, 2);
+                responseEl.className = 'response-content json';
+            } else {
+                responseEl.textContent = data;
+                responseEl.className = 'response-content';
+            }
+        }
+
+        function displayRequestAndResponse(requestInfo, responseData) {
+            const responseEl = elements.response;
+            
+            console.log('displayRequestAndResponse called:', { requestInfo, responseData });
+            
+            if (!responseEl) {
+                console.error('Response element not found!');
+                return;
+            }
+            
+            let bodyDisplay = requestInfo.body;
+            if (bodyDisplay && typeof bodyDisplay === 'string') {
+                try {
+                    bodyDisplay = JSON.parse(bodyDisplay);
+                } catch (e) {
+                    // Keep as string if not valid JSON
+                }
+            }
+            
+            const fullOutput = {
+                '📤 REQUEST': {
+                    method: requestInfo.method,
+                    url: requestInfo.url,
+                    headers: requestInfo.headers,
+                    body: bodyDisplay
+                },
+                '📥 RESPONSE': responseData
+            };
+            
+            responseEl.textContent = JSON.stringify(fullOutput, null, 2);
+            responseEl.className = 'response-content json';
+            console.log('Response displayed');
+        }
+
+        async function makeRequest(endpoint, options = {}) {
+            if (!currentToken) {
+                showStatus('❌ Por favor inicie sesión primero', false);
+                return;
+            }
+
+            const method = options.method || 'GET';
+            const requestInfo = {
+                method: method,
+                url: `${proxyUrl}${endpoint}`,
+                headers: {
+                    'Authorization': `Bearer ${currentToken.substring(0, 20)}...`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                },
+                body: options.body
+            };
+
+            try {
+                showLoading(true);
+                
+                const fetchOptions = {
+                    method: method,
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                };
+                
+                // Solo agregar body si existe y no es GET
+                if (options.body && method !== 'GET') {
+                    fetchOptions.body = options.body;
+                }
+                
+                console.log('Fetch options:', fetchOptions);
+                const response = await fetch(`${proxyUrl}${endpoint}`, fetchOptions);
+                console.log('Response received:', response.status, response.statusText);
+
+                showLoading(false);
+
+                let data;
+                const contentType = response.headers.get('content-type');
+                console.log('Content-Type:', contentType);
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+                
+                console.log('Data parsed:', data);
+
+                displayRequestAndResponse(requestInfo, data);
+                return data;
+            } catch (error) {
+                showLoading(false);
+                const errorData = { error: error.message };
+                displayRequestAndResponse(requestInfo, errorData);
+                showStatus('❌ Error: ' + error.message, false);
+                return errorData;
+            }
+        }
+
+        // Quick endpoint functions
+        async function testPing() {
+            await makeRequest('/ping');
+        }
+
+        async function testQuery() {
+            await makeRequest('/query', {
+                method: 'POST',
+                body: JSON.stringify({
+                    query: 'SELECT SYSDATE AS fecha_actual, USER AS usuario FROM DUAL'
+                })
+            });
+        }
+
+        async function testProcedure() {
+            await makeRequest('/procedure', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: 'PROC_TEST',
+                    params: [
+                        { name: 'p_input', value: 'Hola desde el frontend', direction: 'IN', type: 'STRING' },
+                        { name: 'p_output', direction: 'OUT', type: 'STRING' }
+                    ]
+                })
+            });
+        }
+
+        async function testFunction() {
+            await makeRequest('/procedure', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: 'FUNC_TEST_SUMA',
+                    isFunction: true,
+                    params: [
+                        { name: 'resultado', direction: 'OUT', type: 'number' },
+                        { name: 'p_num1', value: 15, direction: 'IN', type: 'number' },
+                        { name: 'p_num2', value: 27, direction: 'IN', type: 'number' }
+                    ]
+                })
+            });
+        }
+
+        async function testAsync() {
+            const data = await makeRequest('/procedure/async', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: 'PROC_TEST_DEMORA',
+                    params: [
+                        { name: 'p_segundos', value: 5, direction: 'IN', type: 'NUMBER' },
+                        { name: 'p_mensaje', value: 'Job desde frontend', direction: 'IN', type: 'STRING' },
+                        { name: 'p_resultado', direction: 'OUT', type: 'STRING' }
+                    ]
+                })
+            });
+            
+            if (data && data.job_id) {
+                showStatus(`✅ Job creado: ${data.job_id}`, true);
+            }
+        }
+
+        async function getJobs() {
+            await makeRequest('/jobs');
+        }
+
+        async function getLogs() {
+            await makeRequest('/logs');
+        }
+
+        async function getStats() {
+            await makeRequest('/_proxy/stats');
+        }
+
+        async function getUsers() {
+            await makeRequest('/_proxy/users');
+        }
+
+        async function sendCustomRequest() {
+            const endpoint = elements.endpoint.value;
+            let body = elements.requestBody.value;
+            
+            console.log('sendCustomRequest called:', { endpoint, body, method: currentMethod });
+            
+            if (!endpoint) {
+                showStatus('❌ Por favor ingrese un endpoint', false);
+                return;
+            }
+            
+            const options = {
+                method: currentMethod
+            };
+            
+            if (body && currentMethod !== 'GET') {
+                try {
+                    // Eliminar comentarios de estilo // del JSON
+                    body = body.replace(/\/\/.*$/gm, '').trim();
+                    
+                    // Validar JSON
+                    JSON.parse(body);
+                    options.body = body;
+                } catch (e) {
+                    showStatus('❌ JSON inválido en el body: ' + e.message, false);
+                    console.error('JSON parse error:', e);
+                    return;
+                }
+            }
+            
+            console.log('Making request with options:', options);
+            const result = await makeRequest(endpoint, options);
+            console.log('Request result:', result);
+        }
+
+        // Función para cargar ejemplos en el textarea
+        function loadExample(type) {
+            const textarea = document.getElementById('requestBody');
+            const endpointInput = document.getElementById('endpoint');
+            
+            const examples = {
+                query: {
+                    endpoint: '/query',
+                    body: `{
+  "query": "SELECT SYSDATE AS fecha, USER AS usuario FROM DUAL"
+}`
+                },
+                procedure: {
+                    endpoint: '/procedure',
+                    body: `{
+  "name": "PROC_TEST",
+  "params": [
+    { "name": "p_input", "value": "Prueba", "direction": "IN" },
+    { "name": "p_output", "direction": "OUT", "type": "STRING" }
+  ]
+}`
+                },
+                function: {
+                    endpoint: '/procedure',
+                    body: `{
+  "name": "FUNC_TEST_SUMA",
+  "isFunction": true,
+  "params": [
+    { "name": "resultado", "direction": "OUT", "type": "number" },
+    { "name": "p_num1", "value": 10, "direction": "IN" },
+    { "name": "p_num2", "value": 20, "direction": "IN" }
+  ]
+}`
+                },
+                schema: {
+                    endpoint: '/procedure',
+                    body: `{
+  // Usa el campo "schema" para especificar el esquema por separado
+  "schema": "WORKFLOW",
+  "name": "MI_FUNCION",
+  "isFunction": true,
+  "params": [
+    { "name": "resultado", "direction": "OUT", "type": "number" },
+    { "name": "p_param1", "value": 100, "direction": "IN" }
+  ]
+}`
+                }
+            };
+            
+            const example = examples[type];
+            if (example) {
+                endpointInput.value = example.endpoint;
+                textarea.value = example.body;
+                showStatus(`✅ Ejemplo de ${type} cargado`, true);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+-- Solución: Crear un sinónimo para EXISTE_PROC_CAB
+-- Ejecutar como usuario USUARIO
+
+CREATE OR REPLACE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;

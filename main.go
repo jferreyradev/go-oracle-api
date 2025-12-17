@@ -149,6 +149,27 @@ func (jm *JobManager) CleanupOldJobs() {
 	}
 }
 
+// formatObjectName formatea el nombre de un procedimiento/función considerando esquema
+// Retorna el nombre formateado según las reglas:
+// - Si schema especificado: SCHEMA.NAME (sin comillas)
+// - Si name contiene punto: "PARTE1"."PARTE2" (con comillas)
+// - Si nombre simple: NAME (sin comillas, en mayúsculas)
+func formatObjectName(schema, name string) string {
+	if schema != "" {
+		// Si se especifica el esquema por separado, usar SCHEMA.NAME sin comillas
+		return fmt.Sprintf("%s.%s", strings.ToUpper(schema), strings.ToUpper(name))
+	} else if strings.Contains(name, ".") && !strings.Contains(name, "\"") {
+		// Si contiene punto y no tiene comillas, agregar comillas dobles a cada parte
+		parts := strings.Split(name, ".")
+		for i, part := range parts {
+			parts[i] = fmt.Sprintf("\"%s\"", strings.ToUpper(part))
+		}
+		return strings.Join(parts, ".")
+	}
+	// Nombre simple, sin esquema
+	return strings.ToUpper(name)
+}
+
 // DeleteJob elimina un job específico por ID (memoria y BD)
 func (jm *JobManager) DeleteJob(id string) error {
 	jm.mu.Lock()
@@ -589,7 +610,7 @@ func openOracleConnection(cfg AppConfig) (*sql.DB, error) {
 	dsn := fmt.Sprintf("oracle://%s:%s@%s:%s/%s", cfg.OracleUser, cfg.OraclePassword, cfg.OracleHost, cfg.OraclePort, cfg.OracleService)
 	database, err := sql.Open("oracle", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error al abrir driver Oracle: %w", err)
 	}
 
 	// Configurar pool de conexiones para procedimientos largos
@@ -597,6 +618,16 @@ func openOracleConnection(cfg AppConfig) (*sql.DB, error) {
 	database.SetMaxIdleConns(5)                   // Conexiones idle
 	database.SetConnMaxLifetime(0)                // Sin límite de tiempo de vida (0 = infinito)
 	database.SetConnMaxIdleTime(10 * time.Minute) // Cerrar idle después de 10 min
+
+	// Verificar que la conexión sea válida con timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := database.PingContext(ctx); err != nil {
+		database.Close()
+		return nil, fmt.Errorf("no se pudo conectar a la base de datos Oracle (host=%s:%s servicio=%s usuario=%s): %w",
+			cfg.OracleHost, cfg.OraclePort, cfg.OracleService, cfg.OracleUser, err)
+	}
 
 	return database, nil
 }
@@ -692,12 +723,25 @@ Para más información consulta:
 	// ===============================
 	cfg := loadConfig()
 
+	fmt.Println("==============================")
+	fmt.Println("Intentando conectar a Oracle...")
+	fmt.Printf("Host: %s:%s\n", cfg.OracleHost, cfg.OraclePort)
+	fmt.Printf("Servicio: %s\n", cfg.OracleService)
+	fmt.Printf("Usuario: %s\n", cfg.OracleUser)
+	fmt.Println("==============================")
+
 	db, err = openOracleConnection(cfg)
 	if err != nil {
-		_ = os.WriteFile("log/last_error.txt", []byte(fmt.Sprintf("Error abriendo conexión: %v\n", err)), 0644)
-		log.Fatalf("Error abriendo conexión: %v", err)
+		errorMsg := fmt.Sprintf("\n❌ ERROR FATAL: No se pudo establecer conexión con la base de datos\n\n%v\n\nVerifica:\n1. Que Oracle esté ejecutándose\n2. Los datos de conexión en el archivo .env\n3. La conectividad de red al servidor\n4. El firewall y puertos abiertos\n\n", err)
+		fmt.Fprint(os.Stderr, errorMsg)
+		_ = os.WriteFile("log/last_error.txt", []byte(errorMsg), 0644)
+		log.Fatal(errorMsg)
 	}
 	defer db.Close()
+
+	fmt.Println("✅ Conexión a Oracle establecida correctamente")
+	fmt.Println()
+
 	port := cfg.ListenPort
 	user := cfg.OracleUser
 	host := cfg.OracleHost
@@ -1009,6 +1053,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name   string `json:"name"`
+		Schema string `json:"schema,omitempty"` // Esquema del procedimiento/función
 		Params []struct {
 			Name      string      `json:"name"`
 			Value     interface{} `json:"value,omitempty"`
@@ -1022,13 +1067,22 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "JSON inválido"})
 		return
 	}
+
+	// Log para debug: mostrar el JSON recibido
+	reqJSON, _ := json.MarshalIndent(req, "", "  ")
+	log.Printf("[PROCEDURE] JSON recibido:\n%s", string(reqJSON))
+
 	if req.Name == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Falta el campo 'name'"})
 		return
 	}
 
-	log.Printf("[PROCEDURE] Ejecutando: %s con %d parámetros", req.Name, len(req.Params))
+	if req.Schema != "" {
+		log.Printf("[PROCEDURE] Ejecutando: %s.%s con %d parámetros", req.Schema, req.Name, len(req.Params))
+	} else {
+		log.Printf("[PROCEDURE] Ejecutando: %s con %d parámetros", req.Name, len(req.Params))
+	}
 
 	placeholders := []string{}
 	args := []interface{}{}
@@ -1097,7 +1151,12 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			paramPos++
 		}
-		call := fmt.Sprintf("BEGIN :1 := %s(%s); END;", req.Name, strings.Join(placeholders[1:], ", "))
+
+		// Formatear el nombre para manejar esquema.función correctamente
+		functionName := formatObjectName(req.Schema, req.Name)
+
+		call := fmt.Sprintf("BEGIN :1 := %s(%s); END;", functionName, strings.Join(placeholders[1:], ", "))
+		log.Printf("[PROCEDURE] SQL generado para función: %s", call)
 
 		stmt, err := db.Prepare(call)
 		if err != nil {
@@ -1192,7 +1251,12 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			args = append(args, p.Value)
 		}
 	}
-	call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
+
+	// Formatear el nombre para manejar esquema.procedimiento correctamente
+	procedureName := formatObjectName(req.Schema, req.Name)
+
+	call := fmt.Sprintf("BEGIN %s(%s); END;", procedureName, strings.Join(placeholders, ", "))
+	log.Printf("[PROCEDURE] SQL generado para procedimiento: %s", call)
 
 	// Crear log
 	startExec := time.Now()
@@ -1287,6 +1351,7 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name       string `json:"name"`
+		Schema     string `json:"schema,omitempty"` // Esquema del procedimiento/función
 		IsFunction bool   `json:"isFunction"`
 		Params     []struct {
 			Name      string      `json:"name"`
@@ -1433,7 +1498,10 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 			j.Progress = 30
 		})
 
-		call := fmt.Sprintf("BEGIN %s(%s); END;", req.Name, strings.Join(placeholders, ", "))
+		// Formatear el nombre para manejar esquema.procedimiento correctamente
+		procedureName := formatObjectName(req.Schema, req.Name)
+
+		call := fmt.Sprintf("BEGIN %s(%s); END;", procedureName, strings.Join(placeholders, ", "))
 
 		stmt, err := db.Prepare(call)
 		if err != nil {

@@ -12,7 +12,14 @@
  * 
  * Uso:
  *   deno run --allow-net --allow-env proxy.ts
- *   deno run --allow-net --allow-env proxy.ts --port 8080 --api http://10.6.150.91:3000
+ *   deno run --allow-net --allow-env proxy.ts --port 8080 --api http://10.6.150.91:3000 --token mytoken123
+ *   deno run --allow-net --allow-env proxy.ts --no-auth
+ * 
+ * Argumentos:
+ *   --port <numero>     Puerto del proxy (default: 8000)
+ *   --api <url>         URL del backend (default: http://10.6.46.114:3013)
+ *   --token <string>    Token del backend (default: test1)
+ *   --no-auth           Deshabilitar autenticación del proxy (solo pruebas)
  */
 
 const PROXY_PORT = Deno.args.includes('--port') 
@@ -21,9 +28,15 @@ const PROXY_PORT = Deno.args.includes('--port')
 
 const API_URL = Deno.args.includes('--api')
     ? Deno.args[Deno.args.indexOf('--api') + 1]
-    : Deno.env.get('API_URL') || 'http://localhost:3000';
+    : Deno.env.get('API_URL') || 'http://10.6.46.114:3013';
 
-const API_TOKEN = Deno.env.get('API_TOKEN') || 'test1';
+const API_TOKEN = Deno.args.includes('--token')
+    ? Deno.args[Deno.args.indexOf('--token') + 1]
+    : Deno.env.get('API_TOKEN') || 'test1';
+
+// Configuración de autenticación
+const DISABLE_AUTH = Deno.args.includes('--no-auth') || 
+                     Deno.env.get('DISABLE_AUTH') === 'true';
 
 // Sistema de autenticación
 interface User {
@@ -171,8 +184,8 @@ async function handleRequest(req: Request): Promise<Response> {
         });
     }
     
-    // Validar autenticación (excepto para /login y /_proxy/*)
-    if (!path.startsWith('/_proxy/') && path !== '/login') {
+    // Validar autenticación (excepto para /login y /_proxy/*, o si está deshabilitada)
+    if (!DISABLE_AUTH && !path.startsWith('/_proxy/') && path !== '/login') {
         const authHeader = req.headers.get('Authorization');
         const token = authHeader?.replace('Bearer ', '');
         
@@ -486,6 +499,25 @@ async function handler(req: Request): Promise<Response> {
         });
     }
     
+    // Servir frontend
+    if (url.pathname === '/frontend' || url.pathname === '/frontend/') {
+        try {
+            const html = await Deno.readTextFile('./frontend/index.html');
+            return new Response(html, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                },
+            });
+        } catch (error) {
+            return new Response('Frontend not found', {
+                status: 404,
+                headers: { 'Content-Type': 'text/plain' },
+            });
+        }
+    }
+    
     return handleRequest(req);
 }
 
@@ -495,15 +527,22 @@ console.log(`  Proxy:    http://localhost:${PROXY_PORT}`);
 console.log(`  Backend:  ${API_URL}`);
 console.log(`  Token:    ${API_TOKEN.substring(0, 4)}***`);
 console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
-console.log(`  🔐 Autenticación habilitada`);
-console.log(`  POST /login        - Obtener token`);
-console.log(`  POST /logout       - Cerrar sesión`);
-console.log(`  GET  /_proxy/users - Ver usuarios disponibles`);
-console.log(`  GET  /_proxy/stats - Ver estadísticas`);
-console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
-console.log(`  👥 Usuarios: admin, user, demo`);
-console.log(`  ⏱️  Duración sesión: 24h`);
-console.log(`  ⌛ Inactividad máxima: 2h`);
+
+if (DISABLE_AUTH) {
+    console.log(`  ⚠️  \x1b[33mAutenticación DESHABILITADA (modo pruebas)\x1b[0m`);
+    console.log(`  ℹ️  Todas las peticiones son permitidas sin token`);
+} else {
+    console.log(`  🔐 Autenticación habilitada`);
+    console.log(`  POST /login        - Obtener token`);
+    console.log(`  POST /logout       - Cerrar sesión`);
+    console.log(`  GET  /_proxy/users - Ver usuarios disponibles`);
+    console.log(`  GET  /_proxy/stats - Ver estadísticas`);
+    console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
+    console.log(`  👥 Usuarios: admin, user, demo`);
+    console.log(`  ⏱️  Duración sesión: 24h`);
+    console.log(`  ⌛ Inactividad máxima: 2h`);
+}
+
 console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
 console.log(`\x1b[32m✓ Servidor escuchando\x1b[0m\n`);
 

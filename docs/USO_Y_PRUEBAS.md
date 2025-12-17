@@ -71,6 +71,21 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
     ]
   }' http://localhost:8080/procedure
 ```
+
+#### Ejemplo 2b: Función en otro esquema (con campo `schema`)
+```bash
+curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  -d '{
+    "schema": "WORKFLOW",
+    "name": "MI_FUNCION",
+    "isFunction": true,
+    "params": [
+      { "name": "resultado", "direction": "OUT", "type": "number" },
+      { "name": "p_param1", "value": 100, "direction": "IN" }
+    ]
+  }' http://localhost:8080/procedure
+```
+
 **Respuesta esperada:**
 ```json
 {
@@ -78,6 +93,27 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
   "out": {
     "resultado": 12345
   }
+}
+```
+
+**⚠️ Conflictos de nomenclatura Oracle:**
+
+Cuando un PACKAGE y un SCHEMA/USER tienen el mismo nombre, Oracle siempre interpreta `NOMBRE.FUNCION` como `PACKAGE.FUNCION`, no como `SCHEMA.FUNCION`. Ejemplo:
+- Existe `WORKFLOW` (package en USUARIO)
+- Existe `WORKFLOW` (schema/user separado)
+- `WORKFLOW.EXISTE_PROC_CAB` → Oracle busca en el package, no en el schema
+
+**Solución:** Crear sinónimo:
+```sql
+CREATE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;
+```
+
+Luego llamar directamente sin schema:
+```json
+{
+  "name": "EXISTE_PROC_CAB",
+  "isFunction": true,
+  "params": [...]
 }
 ```
 
@@ -126,6 +162,46 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
 - Buffer de 4000 caracteres para parámetros OUT de tipo string
 - Soporte completo para parámetros NUMBER/INTEGER
 - Manejo robusto de valores NULL
+
+#### Procedimientos y funciones en diferentes esquemas
+
+**Notación Oracle:**
+- `PROCEDIMIENTO` - Standalone en esquema actual
+- `PAQUETE.PROCEDIMIENTO` - Dentro de un paquete
+- `ESQUEMA.PROCEDIMIENTO` - Standalone en otro esquema (⚠️ puede ser ambiguo)
+- `ESQUEMA.PAQUETE.PROCEDIMIENTO` - En paquete de otro esquema
+
+**✅ SOLUCIÓN: Campo `schema` separado** (recomendado para evitar ambigüedad):
+
+```json
+{
+  "schema": "WORKFLOW",
+  "name": "MI_FUNCION",
+  "isFunction": true,
+  "params": [...]
+}
+```
+
+Esto genera la llamada: `BEGIN :1 := "WORKFLOW"."MI_FUNCION"(...); END;`
+
+**Problema común:** Oracle puede interpretar `ESQUEMA.FUNCIÓN` como `PAQUETE.FUNCIÓN`, causando error PLS-00302.
+
+**Soluciones alternativas:**
+
+1. **Crear sinónimo**:
+   ```sql
+   CREATE SYNONYM MI_FUNCION FOR ESQUEMA.MI_FUNCION;
+   ```
+   Luego llamar: `"name": "MI_FUNCION"`
+
+2. **Otorgar permisos de ejecución**:
+   ```sql
+   GRANT EXECUTE ON ESQUEMA.MI_FUNCION TO MI_USUARIO;
+   ```
+
+3. **Usar el esquema del objeto directamente** (conectarse como ese usuario)
+
+Ver `sql/fix_cross_schema_access.sql` para más detalles.
 
 ---
 

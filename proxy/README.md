@@ -23,13 +23,28 @@ proxy/
 ## 🚀 Inicio Rápido
 
 ```bash
-# Iniciar el proxy
+# Iniciar el proxy (modo normal con autenticación)
 cd proxy
-deno run --allow-net --allow-env proxy.ts --port 8000
+deno run --allow-net --allow-env proxy.ts
 
-# Con puerto personalizado
+# Puerto personalizado
 deno run --allow-net --allow-env proxy.ts --port 8080
+
+# Cambiar backend y token
+deno run --allow-net --allow-env proxy.ts --api http://10.6.46.114:3013 --token mitoken
+
+# Modo sin autenticación (solo pruebas)
+deno run --allow-net --allow-env proxy.ts --no-auth
 ```
+
+### Argumentos disponibles
+
+| Argumento | Descripción | Default |
+|-----------|-------------|---------|
+| `--port <numero>` | Puerto del proxy | 8000 |
+| `--api <url>` | URL del backend | http://10.6.46.114:3013 |
+| `--token <string>` | Token del backend | test1 |
+| `--no-auth` | Deshabilitar autenticación (⚠️ solo pruebas) | false |
 
 ## 🎨 Frontend Web
 
@@ -106,16 +121,35 @@ node test_all_endpoints.js
 
 ## ⚙️ Configuración
 
+### Variables de entorno
 ```bash
-# Variables de entorno
-export API_URL="http://localhost:3000"
-export API_TOKEN="test1"
+# PowerShell
+$env:API_URL="http://localhost:3000"
+$env:API_TOKEN="mitoken123"
+$env:DISABLE_AUTH="true"  # Deshabilitar autenticación
 
-# O parámetros
+# Bash
+export API_URL="http://localhost:3000"
+export API_TOKEN="mitoken123"
+export DISABLE_AUTH="true"
+```
+
+### Argumentos de línea de comandos
+```bash
+# Configuración completa
 deno run --allow-net --allow-env proxy.ts \
   --port 8000 \
-  --api http://10.6.150.91:3000
+  --api http://10.6.46.114:3013 \
+  --token mitoken123
+
+# Modo sin autenticación para pruebas rápidas
+deno run --allow-net --allow-env proxy.ts --no-auth
 ```
+
+### Prioridad de configuración
+1. Argumentos de línea de comandos (mayor prioridad)
+2. Variables de entorno
+3. Valores por defecto (menor prioridad)
 
 ## 📚 Documentación Completa
 

@@ -14,6 +14,7 @@ Este microservicio resuelve ese problema actuando como un puente seguro y ligero
 - Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
 - Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
 - **Soporte completo para procedimientos y funciones de paquetes Oracle**.
+- **Campo `schema` separado** para especificar el esquema sin ambigüedad.
 - **Detección automática de tipos de datos** para parámetros OUT (NUMBER, VARCHAR2).
 - **Manejo inteligente de fechas** con conversión automática desde formatos estándar.
 - **Consultas multilínea** con normalización automática de saltos de línea.
@@ -126,6 +127,19 @@ Cada instancia se identifica de las siguientes maneras:
 - **Monitoreo centralizado**: Scripts para verificar estado y logs
 - **Gestión simplificada**: Detener/iniciar instancias específicas
 
+## Interfaz Web Frontend
+
+El proyecto incluye una interfaz web completa accesible a través del proxy en `http://localhost:8000/frontend`:
+
+**Características:**
+- 🎯 **9 botones de prueba rápida** para endpoints comunes
+- ✏️ **Editor JSON personalizable** con resaltado de sintaxis
+- 📊 **Visor de respuestas** con formato automático
+- 💾 **Persistencia local** (guarda tu sesión en LocalStorage)
+- 🔒 **Sistema de login** integrado (admin/admin123)
+
+**Acceso:** Inicia el proxy (`deno run --allow-net --allow-read proxy/proxy.ts`) y visita `http://localhost:8000/frontend`
+
 ## Endpoints disponibles
 
 - **`/ping`** - Verificación de estado y conectividad con Oracle
@@ -138,6 +152,7 @@ Cada instancia se identifica de las siguientes maneras:
 - **`/upload`** - Subir archivos como BLOB a la base de datos
 - **`/logs`** - Consultar logs de consultas ejecutadas
 - **`/docs`** - Documentación integrada
+- **`/frontend`** - Interfaz web para pruebas (vía proxy)
 
 ### 📋 Sistema de Jobs Asíncronos
 
@@ -171,6 +186,23 @@ console.log(`Estado: ${job.status} (${job.progress}%)`);
 ## Funcionalidades destacadas
 
 ### 🔧 Procedimientos y Funciones de Paquetes
+
+El backend maneja automáticamente la nomenclatura de objetos Oracle mediante la función helper `formatObjectName()`, que centraliza la lógica de formateo en un solo lugar.
+
+**Uso con campo `schema` (recomendado para claridad):**
+```json
+{
+  "schema": "WORKFLOW",
+  "name": "MI_FUNCION",
+  "isFunction": true,
+  "params": [
+    { "name": "result", "direction": "OUT", "type": "number" },
+    { "name": "input_param", "value": 123 }
+  ]
+}
+```
+
+**Uso tradicional (esquema.paquete.función):**
 ```json
 {
   "name": "SCHEMA.PACKAGE.FUNCTION_NAME",
@@ -180,6 +212,11 @@ console.log(`Estado: ${job.status} (${job.progress}%)`);
     { "name": "result", "direction": "OUT", "type": "number" }
   ]
 }
+```
+
+**⚠️ Nota sobre conflictos de nomenclatura:** Si existe un PACKAGE con el mismo nombre que un SCHEMA/USER, Oracle interpretará `SCHEMA.FUNCION` como `PACKAGE.FUNCION`. En estos casos, usa sinónimos:
+```sql
+CREATE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;
 ```
 
 ### 📅 Manejo Automático de Fechas
@@ -202,6 +239,7 @@ console.log(`Estado: ${job.status} (${job.progress}%)`);
 
 ## Documentación
 
+- **[SCHEMA_FIELD.md](docs/SCHEMA_FIELD.md)** - ⭐ Campo schema y gestión de nomenclatura Oracle
 - **[ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - ⭐ Sistema completo de jobs asíncronos
 - **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
 - **[PROCEDIMIENTOS_ASINCRONOS.md](docs/PROCEDIMIENTOS_ASINCRONOS.md)** - Ejecución de procedimientos de larga duración

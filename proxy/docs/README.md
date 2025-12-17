@@ -48,7 +48,7 @@ Interfaz web para testing del proxy:
 
 ## 🎯 Casos de Uso Comunes
 
-### 1. Testing Rápido
+### 1. Testing Rápido (con autenticación)
 ```bash
 # Iniciar proxy
 cd proxy
@@ -58,10 +58,29 @@ deno run --allow-net --allow-env proxy.ts
 start frontend/index.html  # Windows
 ```
 
-### 2. Integración en Aplicación Web
+### 2. Testing sin Autenticación (pruebas rápidas)
+```bash
+# Iniciar proxy sin autenticación
+deno run --allow-net --allow-env proxy.ts --no-auth
+
+# Hacer requests directamente sin login
+curl http://localhost:8000/ping
+curl -X POST http://localhost:8000/query -H "Content-Type: application/json" -d '{"query":"SELECT * FROM DUAL"}'
+```
+
+### 3. Configuración Personalizada
+```bash
+# Backend y token personalizados
+deno run --allow-net --allow-env proxy.ts \
+  --api http://10.6.46.114:3013 \
+  --token mitoken123 \
+  --port 8080
+```
+
+### 4. Integración en Aplicación Web
 Ver ejemplos en [PROXY_AUTH.md](PROXY_AUTH.md) - Sección "Ejemplos de Integración"
 
-### 3. Automatización con Scripts
+### 5. Automatización con Scripts
 Ver tests en [tests/](../tests/) para ejemplos de automatización
 
 ---
@@ -74,6 +93,7 @@ Ver tests en [tests/](../tests/) para ejemplos de automatización
 - ✅ 3 roles: admin, user, readonly
 - ✅ Protección contra inactividad
 - ✅ Limpieza automática de sesiones expiradas
+- ✅ **NUEVO**: Modo sin autenticación (`--no-auth`) para pruebas rápidas
 
 ### Proxy
 - ✅ Transparente (reenvía todas las requests)
@@ -82,6 +102,9 @@ Ver tests en [tests/](../tests/) para ejemplos de automatización
 - ✅ Rate limiting (100 req/min)
 - ✅ Logging colorizado
 - ✅ Estadísticas en tiempo real
+- ✅ **NUEVO**: Configuración flexible (CLI args, env vars, defaults)
+- ✅ **NUEVO**: Token del backend configurable (`--token`)
+- ✅ **NUEVO**: Puerto y API backend configurables
 
 ### Frontend
 - ✅ HTML/CSS/JS puro (no requiere build)
@@ -140,6 +163,16 @@ Para mejorar la documentación:
 ---
 
 ## 📝 Changelog
+
+### v2.1 (Actual)
+- ✅ **NUEVO**: Modo sin autenticación (`--no-auth`) para testing
+- ✅ **NUEVO**: Token del backend configurable (`--token`)
+- ✅ **NUEVO**: Puerto configurable (`--port`)
+- ✅ **NUEVO**: API backend configurable (`--api`)
+- ✅ **NUEVO**: Sistema de configuración por prioridad (CLI > env > defaults)
+- ✅ **NUEVO**: Visualización de request y response combinados en frontend
+- ✅ **NUEVO**: Soporte para comentarios `//` en JSON del editor
+- ✅ **MEJORA**: Documentación actualizada con todas las opciones
 
 ### v2.0 (16 dic 2024)
 - ✅ Sistema de autenticación implementado
