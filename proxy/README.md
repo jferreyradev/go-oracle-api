@@ -1,167 +1,154 @@
-# Proxy Server - go-oracle-api
+# Proxy Multi-Backend
 
-Proxy transparente con autenticación y rate limiting para la API de Oracle.
+Sistema de proxy con auto-registro para múltiples backends Oracle.
 
-## 📁 Estructura
+## ⚡ Setup Rápido (15 min)
 
-```
-proxy/
-├── docs/
-│   ├── PROXY_AUTH.md        # Documentación de autenticación
-│   └── FRONTEND.md          # Documentación del frontend
-├── frontend/
-│   └── index.html           # Interfaz web para testing
-├── tests/
-│   ├── test_auth.js         # Tests de autenticación
-│   ├── test_all_endpoints.js # Tests de todos los endpoints
-│   ├── test_proxy_complete.js # Tests completos del proxy
-│   └── test_proxy.js        # Tests básicos
-├── proxy.ts                 # Servidor proxy principal
-└── README.md                # Este archivo
-```
-
-## 🚀 Inicio Rápido
+### 1. Servicio de Configuración
 
 ```bash
-# Iniciar el proxy (modo normal con autenticación)
-cd proxy
-deno run --allow-net --allow-env proxy.ts
-
-# Puerto personalizado
-deno run --allow-net --allow-env proxy.ts --port 8080
-
-# Cambiar backend y token
-deno run --allow-net --allow-env proxy.ts --api http://10.6.46.114:3013 --token mitoken
-
-# Modo sin autenticación (solo pruebas)
-deno run --allow-net --allow-env proxy.ts --no-auth
+# 1. Ve a https://dash.deno.com → New Project → Playground
+# 2. Copia el contenido de config-service.ts
+# 3. Deploy
+# 4. Guarda tu URL: https://tu-config.deno.dev
 ```
 
-### Argumentos disponibles
-
-| Argumento | Descripción | Default |
-|-----------|-------------|---------|
-| `--port <numero>` | Puerto del proxy | 8000 |
-| `--api <url>` | URL del backend | http://10.6.46.114:3013 |
-| `--token <string>` | Token del backend | test1 |
-| `--no-auth` | Deshabilitar autenticación (⚠️ solo pruebas) | false |
-
-## 🎨 Frontend Web
-
-Abre `frontend/index.html` en tu navegador para usar la interfaz gráfica:
+### 2. Deploy del Proxy
 
 ```bash
-# Windows
-start frontend\index.html
-
-# macOS
-open frontend/index.html
-
-# Linux
-xdg-open frontend/index.html
+# En Deno Deploy:
+# 1. New Project → Conecta repo GitHub
+# 2. Entry point: proxy/proxy-deploy.ts
+# 3. Variable de entorno:
+#    CONFIG_API_URL=https://tu-config.deno.dev/items
 ```
 
-**Características del frontend:**
-- 🔑 Login con 3 usuarios predefinidos
-- 🚀 8 botones para endpoints comunes
-- 📝 Editor para requests personalizados
-- 📊 Panel de respuestas en tiempo real
+### 3. Registrar Backends
 
-## 🔐 Autenticación
+**Windows:**
+```powershell
+deno run --allow-net --allow-env backend-register\register.ts `
+  --name=prod `
+  --url=http://10.6.46.114:3013 `
+  --token=secret123 `
+  --prefix=/prod `
+  --config=https://tu-config.deno.dev/items `
+  --daemon
+```
 
-### Login
+**Linux:**
 ```bash
-curl -X POST http://localhost:8000/login \
+deno run --allow-net --allow-env backend-register/register.ts \
+  --name=prod \
+  --url=http://10.6.46.114:3013 \
+  --token=secret123 \
+  --prefix=/prod \
+  --config=https://tu-config.deno.dev/items \
+  --daemon
+```
+
+## 📁 Archivos
+
+- **config-service.ts** - Servicio Deno KV para configuración
+- **proxy-deploy.ts** - Proxy multi-backend (producción)
+- **proxy.ts** - Proxy simple (desarrollo local)
+- **backend-register/** - Scripts de auto-registro
+
+## 🔑 Endpoints
+
+```bash
+# Autenticación
+POST /login                    # Obtener token (admin/admin123)
+GET  /_proxy/config            # Ver backends registrados
+GET  /_proxy/reload            # Recargar configuración
+
+# API (requiere token del login)
+GET  /prod/api/procedures      # Rutea a backend "prod"
+POST /staging/api/execute      # Rutea a backend "staging"
+```
+
+## 🧪 Testing
+
+```bash
+# Ver backends
+curl https://tu-proxy.deno.dev/_proxy/config
+
+# Login
+curl -X POST https://tu-proxy.deno.dev/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
+
+# Usar API (con token del login)
+curl https://tu-proxy.deno.dev/prod/api/procedures \
+  -H "Authorization: Bearer <token>"
 ```
 
-### Usar Token
-```bash
-curl http://localhost:8000/ping \
-  -H "Authorization: Bearer <tu-token>"
-```
-
-## 👥 Usuarios Disponibles
-
-| Usuario | Password  | Rol      | Permisos           |
-|---------|-----------|----------|--------------------|
-| admin   | admin123  | admin    | Lectura/Escritura  |
-| user    | user123   | user     | Lectura/Escritura  |
-| demo    | demo      | readonly | Solo Lectura       |
-
-## 🧪 Tests
+## 💻 Desarrollo Local
 
 ```bash
-# Ejecutar tests (Node.js)
-cd tests
+# Proxy simple
+deno run --allow-net --allow-env proxy.ts
 
-# Test de autenticación
-node test_auth.js
-
-# Test completo del proxy
-node test_proxy_complete.js
-
-# Test de todos los endpoints
-node test_all_endpoints.js
-```
-
-## 📊 Endpoints Especiales
-
-- `POST /login` - Obtener token
-- `POST /logout` - Cerrar sesión
-- `GET /_proxy/stats` - Estadísticas del proxy
-- `GET /_proxy/users` - Usuarios disponibles
-
-## 📚 Documentación
-
-- **[docs/PROXY_AUTH.md](docs/PROXY_AUTH.md)** - Sistema de autenticación completo
-- **[docs/FRONTEND.md](docs/FRONTEND.md)** - Guía del frontend web
-- **[../GUIA_RAPIDA.md](../GUIA_RAPIDA.md)** - Guía rápida de uso
-
-## ⚙️ Configuración
-
-### Variables de entorno
-```bash
-# PowerShell
-$env:API_URL="http://localhost:3000"
-$env:API_TOKEN="mitoken123"
-$env:DISABLE_AUTH="true"  # Deshabilitar autenticación
-
-# Bash
-export API_URL="http://localhost:3000"
-export API_TOKEN="mitoken123"
-export DISABLE_AUTH="true"
-```
-
-### Argumentos de línea de comandos
-```bash
-# Configuración completa
+# Con parámetros
 deno run --allow-net --allow-env proxy.ts \
-  --port 8000 \
-  --api http://10.6.46.114:3013 \
-  --token mitoken123
-
-# Modo sin autenticación para pruebas rápidas
-deno run --allow-net --allow-env proxy.ts --no-auth
+  --port 8080 \
+  --api http://localhost:3013 \
+  --token test1 \
+  --no-auth
 ```
 
-### Prioridad de configuración
-1. Argumentos de línea de comandos (mayor prioridad)
-2. Variables de entorno
-3. Valores por defecto (menor prioridad)
+## 🏗️ Arquitectura
 
-## 📚 Documentación Completa
+```
+Cliente → Proxy (Deno Deploy) → Backends
+          ↑                      ↓
+    Config Service ← ← ← register.ts
+    (Deno KV)         (cada backend)
+```
 
-Ver [PROXY_AUTH.md](PROXY_AUTH.md) para documentación detallada.
+## 📖 Documentación Adicional
 
-## ✨ Características
+- **[backend-register/README.md](backend-register/README.md)** - Auto-registro de backends
+- **[docs/DENO_KV_BACKENDS.md](docs/DENO_KV_BACKENDS.md)** - Gestión manual de backends
+- **[docs/AUTH.md](docs/AUTH.md)** - Sistema de autenticación
+- **[docs/FRONTEND.md](docs/FRONTEND.md)** - Frontend web testing
 
-- ✅ Autenticación con tokens
-- ✅ Control de acceso por roles
-- ✅ Sesiones de 24h con renovación
-- ✅ Rate limiting (100 req/min por IP)
-- ✅ CORS automático
-- ✅ Logging de requests
-- ✅ Estadísticas en tiempo real
-- ✅ Compatible con todos los endpoints de la API
+## 👥 Usuarios
+
+| Usuario | Password | Rol |
+|---------|----------|-----|
+| admin   | admin123 | admin |
+| user    | user123  | user |
+| demo    | demo     | readonly |
+
+## 🔧 Servicios Persistentes
+
+**Windows Task Scheduler:**
+```powershell
+$action = New-ScheduledTaskAction -Execute "D:\ruta\register-prod.bat"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName "Backend-Register" -Action $action -Trigger $trigger
+```
+
+**Linux systemd:**
+```ini
+# /etc/systemd/system/backend-register.service
+[Service]
+ExecStart=/usr/local/bin/deno run --allow-net --allow-env \
+  /ruta/register.ts --name=prod --url=http://... --token=... --prefix=/prod \
+  --config=https://tu-config.deno.dev/items --daemon
+Restart=always
+```
+
+## ⚠️ Troubleshooting
+
+```bash
+# Backend no aparece
+curl https://tu-config.deno.dev/items
+
+# Forzar recarga
+curl https://tu-proxy.deno.dev/_proxy/reload
+
+# Ver logs
+# Deno Deploy → Tu proyecto → Logs
+```
