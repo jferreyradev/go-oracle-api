@@ -5,12 +5,23 @@ Script para auto-registro de backends en el sistema de proxy.
 ## Uso Rápido
 
 ```bash
+# Con URL manual
 deno run --allow-net --allow-env register.ts \
   --name=prod \
   --url=http://10.6.46.114:3013 \
   --token=secret \
   --prefix=/prod \
   --config=https://tu-config.deno.dev/items \
+  --daemon
+
+# Con IP pública automática (reemplaza IPs privadas)
+deno run --allow-net --allow-env register.ts \
+  --name=prod \
+  --url=http://10.6.46.114:3013 \
+  --token=secret \
+  --prefix=/prod \
+  --config=https://tu-config.deno.dev/items \
+  --use-public-ip \
   --daemon
 ```
 
@@ -23,6 +34,7 @@ deno run --allow-net --allow-env register.ts \
 | `--token` | `BACKEND_TOKEN` | Token de autorización |
 | `--prefix` | `BACKEND_PREFIX` | Prefijo de ruta (ej: /prod) |
 | `--config` | `CONFIG_API_URL` | URL del servicio config (REQUERIDO) |
+| `--use-public-ip` | - | Usar IP pública en vez de IP privada/local |
 | `--daemon` | - | Modo daemon (re-registro cada 5 min) |
 
 ## Variables de Entorno
@@ -37,6 +49,18 @@ CONFIG_API_URL=https://tu-config.deno.dev/items
 
 # Ejecutar
 deno run --allow-net --allow-env register.ts --daemon
+```
+
+## IP Pública Automática
+
+Con `--use-public-ip`, el script detecta tu IP pública y reemplaza IPs privadas:
+- `localhost`, `127.0.0.1` → `203.0.113.45:3013`
+- `10.x.x.x`, `192.168.x.x`, `172.16-31.x.x` → Tu IP pública
+- IPs públicas y dominios no se modifican
+
+```bash
+# Local: http://10.6.46.114:3013
+# Registra: http://203.0.113.45:3013
 ```
 
 ## Servicios Persistentes

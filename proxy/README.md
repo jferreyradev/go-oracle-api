@@ -27,6 +27,7 @@ Sistema de proxy con auto-registro para múltiples backends Oracle.
 
 **Windows:**
 ```powershell
+# URL manual
 deno run --allow-net --allow-env backend-register\register.ts `
   --name=prod `
   --url=http://10.6.46.114:3013 `
@@ -34,16 +35,37 @@ deno run --allow-net --allow-env backend-register\register.ts `
   --prefix=/prod `
   --config=https://tu-config.deno.dev/items `
   --daemon
+
+# IP pública automática (agrega --use-public-ip)
+deno run --allow-net --allow-env backend-register\register.ts `
+  --name=prod `
+  --url=http://10.6.46.114:3013 `
+  --token=secret123 `
+  --prefix=/prod `
+  --config=https://tu-config.deno.dev/items `
+  --use-public-ip `
+  --daemon
 ```
 
 **Linux:**
 ```bash
+# URL manual
 deno run --allow-net --allow-env backend-register/register.ts \
   --name=prod \
   --url=http://10.6.46.114:3013 \
   --token=secret123 \
   --prefix=/prod \
   --config=https://tu-config.deno.dev/items \
+  --daemon
+
+# IP pública automática (agrega --use-public-ip)
+deno run --allow-net --allow-env backend-register/register.ts \
+  --name=prod \
+  --url=http://10.6.46.114:3013 \
+  --token=secret123 \
+  --prefix=/prod \
+  --config=https://tu-config.deno.dev/items \
+  --use-public-ip \
   --daemon
 ```
 

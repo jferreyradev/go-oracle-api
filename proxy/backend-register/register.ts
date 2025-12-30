@@ -34,6 +34,7 @@ const CONFIG = {
     token: args.token || Deno.env.get('BACKEND_TOKEN') || '',
     prefix: args.prefix || Deno.env.get('BACKEND_PREFIX') || '',
     configApiUrl: args.config || Deno.env.get('CONFIG_API_URL') || '',
+    usePublicIP: Deno.args.includes('--use-public-ip'),
 };
 
 const DAEMON_INTERVAL = 5 * 60 * 1000;
@@ -74,19 +75,77 @@ function validateConfig(): void {
     }
 }
 
+async function getPublicIP(): Promise<string> {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json', { 
+            signal: AbortSignal.timeout(5000) 
+        });
+        const data = await response.json();
+        return data.ip || 'unknown';
+    } catch {
+        return 'unknown';
+    }
+}
+
+function buildPublicURL(originalURL: string, publicIP: string): string {
+    try {
+        const url = new URL(originalURL);
+        const host = url.hostname;
+        // Reemplazar si es IP privada o localhost
+        if (
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host.startsWith('10.') ||
+            host.startsWith('192.168.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+        ) {
+            url.hostname = publicIP;
+            return url.toString();
+        }
+        return originalURL;
+    } catch {
+        return originalURL;
+    }
+}
+
+function buildPublicURL(originalURL: string, publicIP: string): string {
+    try {
+        const url = new URL(originalURL);
+        // Si la IP es privada o localhost, reemplazar con IP pública
+        const host = url.hostname;
+        if (
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host.startsWith('10.') ||
+            host.startsWith('192.168.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+        ) {
+            url.hostname = publicIP;
+            return url.toString();
+        }
+        return originalURL;
+    } catch {
+        return originalURL;
+    }
+}
+
 async function registerBackend(): Promise<boolean> {
     try {
+        const publicIP = await getPublicIP();
+        const finalURL = CONFIG.usePublicIP ? buildPublicURL(CONFIG.url, publicIP) : CONFIG.url;
+        
         const systemInfo = {
             hostname: Deno.hostname?.() || 'unknown',
             os: Deno.build.os,
             arch: Deno.build.arch,
             denoVersion: Deno.version.deno,
+            publicIP: publicIP,
         };
         const timestamp = new Date().toISOString();
         
         const backendData: BackendConfig = {
             name: CONFIG.name,
-            url: CONFIG.url,
+            url: finalURL,
             token: CONFIG.token,
             prefix: CONFIG.prefix,
             metadata: {
@@ -96,7 +155,13 @@ async function registerBackend(): Promise<boolean> {
             },
         };
         
-        console.log(`🔄 Registrando "${CONFIG.name}" (${CONFIG.url})`);
+        if (CONFIG.usePublicIP && finalURL !== CONFIG.url) {
+            console.log(`🔄 Registrando "${CONFIG.name}"`);
+            console.log(`   Local: ${CONFIG.url}`);
+            console.log(`   Público: ${finalURL}`);
+        } else {
+            console.log(`🔄 Registrando "${CONFIG.name}" (${finalURL}) - IP: ${publicIP}`);
+        }
         
         const response = await fetch(CONFIG.configApiUrl, {
             method: 'POST',
