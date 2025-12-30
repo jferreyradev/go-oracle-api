@@ -35,6 +35,7 @@ const CONFIG = {
     prefix: args.prefix || Deno.env.get('BACKEND_PREFIX') || '',
     configApiUrl: args.config || Deno.env.get('CONFIG_API_URL') || '',
     usePublicIP: Deno.args.includes('--use-public-ip'),
+    port: args.port || Deno.env.get('PORT') || '',
 };
 
 const DAEMON_INTERVAL = 5 * 60 * 1000;
@@ -53,21 +54,45 @@ interface BackendConfig {
 }
 
 function validateConfig(): void {
+    // Validar que solo se use un modo
+    if (CONFIG.usePublicIP && CONFIG.url) {
+        console.error('❌ Error: No puedes usar --url y --use-public-ip al mismo tiempo');
+        console.error('\n📋 Elige un modo:');
+        console.error('   Modo 1: --url=http://10.6.46.114:3013');
+        console.error('   Modo 2: --use-public-ip --port=3013');
+        Deno.exit(1);
+    }
+    
     const required = [
         { key: 'name', value: CONFIG.name, flag: '--name' },
-        { key: 'url', value: CONFIG.url, flag: '--url' },
         { key: 'token', value: CONFIG.token, flag: '--token' },
         { key: 'prefix', value: CONFIG.prefix, flag: '--prefix' },
         { key: 'configApiUrl', value: CONFIG.configApiUrl, flag: '--config' },
     ];
+    
+    // URL es requerida solo si no se usa --use-public-ip
+    if (!CONFIG.usePublicIP) {
+        required.push({ key: 'url', value: CONFIG.url, flag: '--url' });
+    } else {
+        // Con --use-public-ip, requerir --port
+        required.push({ key: 'port', value: CONFIG.port, flag: '--port' });
+    }
+    
     const missing = required.filter(r => !r.value);
     
     if (missing.length > 0) {
         console.error(`❌ Faltan: ${missing.map(m => m.flag).join(', ')}`);
-        console.error('\n💡 Ejemplo:');
+        console.error('\n💡 Ejemplo modo manual:');
         console.error('  deno run --allow-net --allow-env register.ts \\');
         console.error('    --name=prod \\');
         console.error('    --url=http://10.6.46.114:3013 \\');
+        console.error('    --token=secret \\');
+        console.error('    --prefix=/prod \\');
+        console.error('    --config=https://tu-config.deno.dev/items');
+        console.error('\n💡 Ejemplo modo IP pública:');
+        console.error('  deno run --allow-net --allow-env register.ts \\');
+        console.error('    --name=prod \\');
+        console.error('    --port=3013 \\');
         console.error('    --token=secret \\');
         console.error('    --prefix=/prod \\');
         console.error('    --config=https://tu-proyecto.deno.dev/items');
@@ -87,30 +112,16 @@ async function getPublicIP(): Promise<string> {
     }
 }
 
-function buildPublicURL(originalURL: string, publicIP: string): string {
-    try {
-        const url = new URL(originalURL);
-        const host = url.hostname;
-        if (
-            host === 'localhost' ||
-            host === '127.0.0.1' ||
-            host.startsWith('10.') ||
-            host.startsWith('192.168.') ||
-            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
-        ) {
-            url.hostname = publicIP;
-            return url.toString();
-        }
-        return originalURL;
-    } catch {
-        return originalURL;
-    }
+function buildPublicURL(publicIP: string, port: string): string {
+    return `http://${publicIP}:${port}`;
 }
 
 async function registerBackend(): Promise<boolean> {
     try {
         const publicIP = await getPublicIP();
-        const finalURL = CONFIG.usePublicIP ? buildPublicURL(CONFIG.url, publicIP) : CONFIG.url;
+        const finalURL = CONFIG.usePublicIP 
+            ? buildPublicURL(publicIP, CONFIG.port)
+            : CONFIG.url;
         
         const systemInfo = {
             hostname: Deno.hostname?.() || 'unknown',
@@ -133,12 +144,10 @@ async function registerBackend(): Promise<boolean> {
             },
         };
         
-        if (CONFIG.usePublicIP && finalURL !== CONFIG.url) {
-            console.log(`🔄 Registrando "${CONFIG.name}"`);
-            console.log(`   Local: ${CONFIG.url}`);
-            console.log(`   Público: ${finalURL}`);
+        if (CONFIG.usePublicIP) {
+            console.log(`🔄 Registrando "${CONFIG.name}" - IP: ${publicIP}:${CONFIG.port}`);
         } else {
-            console.log(`🔄 Registrando "${CONFIG.name}" (${finalURL}) - IP: ${publicIP}`);
+            console.log(`🔄 Registrando "${CONFIG.name}" (${finalURL})`);
         }
         
         const response = await fetch(CONFIG.configApiUrl, {
