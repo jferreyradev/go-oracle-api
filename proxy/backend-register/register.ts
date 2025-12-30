@@ -2,17 +2,17 @@
 /**
  * Backend Auto-Registration
  * 
- * Uso con variables de entorno:
- *   export BACKEND_NAME=prod
- *   deno run --allow-net --allow-env register.ts --daemon
- * 
- * Uso con argumentos:
+ * Uso:
  *   deno run --allow-net --allow-env register.ts \
  *     --name=prod \
  *     --url=http://10.6.46.114:3013 \
  *     --token=secret \
  *     --prefix=/prod \
+ *     --config=https://tu-config.deno.dev/items \
  *     --daemon
+ * 
+ * Con IP pública automática:
+ *   Agregar: --use-public-ip
  */
 
 function parseArgs(): Record<string, string> {
@@ -48,7 +48,7 @@ interface BackendConfig {
     metadata?: {
         registeredAt: string;
         lastUpdate: string;
-        system: { hostname: string; os: string; arch: string; denoVersion: string };
+        system: { hostname: string; os: string; arch: string; denoVersion: string; publicIP: string };
     };
 }
 
@@ -90,28 +90,6 @@ async function getPublicIP(): Promise<string> {
 function buildPublicURL(originalURL: string, publicIP: string): string {
     try {
         const url = new URL(originalURL);
-        const host = url.hostname;
-        // Reemplazar si es IP privada o localhost
-        if (
-            host === 'localhost' ||
-            host === '127.0.0.1' ||
-            host.startsWith('10.') ||
-            host.startsWith('192.168.') ||
-            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
-        ) {
-            url.hostname = publicIP;
-            return url.toString();
-        }
-        return originalURL;
-    } catch {
-        return originalURL;
-    }
-}
-
-function buildPublicURL(originalURL: string, publicIP: string): string {
-    try {
-        const url = new URL(originalURL);
-        // Si la IP es privada o localhost, reemplazar con IP pública
         const host = url.hostname;
         if (
             host === 'localhost' ||
@@ -177,7 +155,7 @@ async function registerBackend(): Promise<boolean> {
             return false;
         }
     } catch (error) {
-        console.error(`❌ ${error.message}`);
+        console.error(`❌ ${(error as Error).message}`);
         return false;
     }
 }
@@ -214,7 +192,7 @@ if (import.meta.main) {
     try {
         await main();
     } catch (error) {
-        console.error('❌ Error fatal:', error.message);
+        console.error('❌ Error fatal:', (error as Error).message);
         Deno.exit(1);
     }
 }
