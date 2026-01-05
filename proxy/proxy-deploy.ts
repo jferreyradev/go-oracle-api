@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-net --allow-env
 
 /**
- * Proxy Server para go-oracle-api - VERSIÓN DENO DEPLOY
+ * Proxy Server para go-oracle-api
  * 
  * Características:
  * - Reenvía requests a múltiples backends (routing por prefijo)
@@ -10,21 +10,23 @@
  * - CORS automático
  * - Rate limiting opcional
  * - Compatible con Deno Deploy
+ * - Desencriptación automática de tokens AES-256-GCM
  * 
  * Uso:
  *   deno run --allow-net --allow-env proxy-deploy.ts
  * 
  * Variables de entorno:
- *   CONFIG_API_URL  URL del endpoint con configuración de backends (REQUERIDO)
- *   CACHE_TTL       Tiempo de cache en segundos (default: 60)
- *   DISABLE_AUTH    Deshabilitar autenticación del proxy (default: false)
+ *   CONFIG_API_URL   URL del endpoint con configuración de backends (REQUERIDO)
+ *   CACHE_TTL        Tiempo de cache en segundos (default: 60)
+ *   DISABLE_AUTH     Deshabilitar autenticación del proxy (default: false)
+ *   ENCRYPTION_KEY   Clave para desencriptar tokens (debe coincidir con register.ts)
  * 
  * Formato esperado del endpoint:
  *   [
  *     {
  *       "name": "prod",
  *       "url": "http://10.6.46.114:3013",
- *       "token": "token-prod",
+ *       "token": "token-encriptado-base64",
  *       "prefix": "/prod"
  *     },
  *     ...
@@ -44,6 +46,60 @@
  *   POST /staging/execute  → http://10.6.150.91:3000/execute
  *   POST /dev/execute      → http://localhost:3013/execute
  */
+
+// Clave de encriptación (debe ser la misma que en register.ts)
+const ENCRYPTION_KEY = Deno.env.get('ENCRYPTION_KEY') || 'go-oracle-api-secure-key-2026';
+
+// Función para desencriptar tokens AES-256-GCM
+async function decryptToken(encryptedToken: string): Promise<string> {
+    try {
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        
+        // Decodificar desde base64
+        const encrypted = Uint8Array.from(atob(encryptedToken), c => c.charCodeAt(0));
+        
+        // Extraer salt, iv y datos
+        const salt = encrypted.slice(0, 16);
+        const iv = encrypted.slice(16, 28);
+        const data = encrypted.slice(28);
+        
+        // Derivar clave
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw',
+            encoder.encode(ENCRYPTION_KEY),
+            'PBKDF2',
+            false,
+            ['deriveBits', 'deriveKey']
+        );
+        
+        const key = await crypto.subtle.deriveKey(
+            {
+                name: 'PBKDF2',
+                salt: salt,
+                iterations: 100000,
+                hash: 'SHA-256',
+            },
+            keyMaterial,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['decrypt']
+        );
+        
+        // Desencriptar
+        const decryptedData = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            data
+        );
+        
+        return decoder.decode(decryptedData);
+    } catch (error) {
+        console.error('❌ Error desencriptando token:', error.message);
+        // Si falla la desencriptación, asumir que el token no está encriptado
+        return encryptedToken;
+    }
+}
 
 // Configuración de backend
 interface BackendConfig {
@@ -80,10 +136,13 @@ async function fetchBackendsFromAPI(): Promise<BackendConfig[]> {
         if (Array.isArray(data)) {
             for (const item of data) {
                 if (item.name && item.url && item.token) {
+                    // Desencriptar el token
+                    const decryptedToken = await decryptToken(item.token);
+                    
                     backends.push({
                         name: item.name.toLowerCase(),
                         url: item.url.replace(/\/$/, ''),
-                        token: item.token,
+                        token: decryptedToken, // Token desencriptado
                         prefix: item.prefix ? (item.prefix.startsWith('/') ? item.prefix : `/${item.prefix}`) : `/${item.name}`,
                     });
                 }

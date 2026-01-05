@@ -12,6 +12,7 @@ deno run --allow-net --allow-env register.ts \
   --token=secret \
   --prefix=/prod \
   --config=https://tu-config.deno.dev/items \
+  --key=mi-clave-secreta \
   --daemon
 ```
 
@@ -23,6 +24,7 @@ deno run --allow-net --allow-env register.ts \
   --token=secret \
   --prefix=/prod \
   --config=https://tu-config.deno.dev/items \
+  --key=mi-clave-secreta \
   --use-public-ip \
   --daemon
 ```
@@ -37,8 +39,36 @@ deno run --allow-net --allow-env register.ts \
 | `--token` | `BACKEND_TOKEN` | Token de autorización |
 | `--prefix` | `BACKEND_PREFIX` | Prefijo de ruta (ej: /prod) |
 | `--config` | `CONFIG_API_URL` | URL del servicio config (REQUERIDO) |
+| `--key` | `ENCRYPTION_KEY` | Clave de encriptación AES-256 (opcional) |
 | `--use-public-ip` | - | Usar IP pública detectada automáticamente |
 | `--daemon` | - | Modo daemon (re-registro cada 5 min) |
+
+## 🔐 Seguridad del Token
+
+El token se encripta automáticamente antes de guardarse en Deno KV usando **AES-256-GCM**.
+
+**Características:**
+- Algoritmo: AES-GCM de 256 bits
+- Derivación de clave: PBKDF2 con 100,000 iteraciones
+- Salt e IV aleatorios en cada encriptación
+- Token almacenado en base64
+
+**Configurar clave de encriptación:**
+```bash
+# Por línea de comandos (recomendado)
+--key=mi-clave-super-secreta-2026
+
+# Por variable de entorno
+export ENCRYPTION_KEY="mi-clave-super-secreta-2026"
+
+# Prioridad: --key > ENCRYPTION_KEY > clave por defecto
+```
+
+**⚠️ Importante:** Usa la misma clave en el proxy para desencriptar:
+```typescript
+import { decryptToken } from './backend-register/register.ts';
+const realToken = await decryptToken(backend.token);
+```
 
 ## Variables de Entorno
 
@@ -49,6 +79,7 @@ BACKEND_URL=http://10.6.46.114:3013
 BACKEND_TOKEN=secret
 BACKEND_PREFIX=/prod
 CONFIG_API_URL=https://tu-config.deno.dev/items
+ENCRYPTION_KEY=mi-clave-secreta-2026
 
 # Ejecutar
 deno run --allow-net --allow-env register.ts --daemon

@@ -9,10 +9,14 @@
  *     --token=secret \
  *     --prefix=/prod \
  *     --config=https://tu-config.deno.dev/items \
+ *     --key=mi-clave-secreta \
  *     --daemon
  * 
  * Con IP pública automática:
- *   Agregar: --use-public-ip
+ *   Agregar: --use-public-ip --port=3013
+ * 
+ * Parámetros opcionales:
+ *   --key : Clave de encriptación personalizada (default: clave por defecto)
  */
 
 function parseArgs(): Record<string, string> {
@@ -41,6 +45,9 @@ const CONFIG = {
 const DAEMON_INTERVAL = 5 * 60 * 1000;
 const isDaemon = Deno.args.includes('--daemon');
 
+// Clave de encriptación (línea de comando > variable de entorno > default)
+const ENCRYPTION_KEY = args.key || Deno.env.get('ENCRYPTION_KEY') || 'go-oracle-api-secure-key-2026';
+
 interface BackendConfig {
     name: string;
     url: string;
@@ -51,6 +58,95 @@ interface BackendConfig {
         lastUpdate: string;
         system: { hostname: string; os: string; arch: string; denoVersion: string; publicIP: string };
     };
+}
+
+// Funciones de encriptación (exportadas para usar en proxy)
+export async function encryptToken(token: string, key: string = ENCRYPTION_KEY): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
+    
+    // Derivar clave desde la contraseña
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(ENCRYPTION_KEY),
+        'PBKDF2',
+        false,
+        ['deriveBits', 'deriveKey']
+    );
+    
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const key = await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256',
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt']
+    );
+    
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encryptedData = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        data
+    );
+    
+    // Combinar salt + iv + datos encriptados
+    const result = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
+    result.set(salt, 0);
+    result.set(iv, salt.length);
+    result.set(new Uint8Array(encryptedData), salt.length + iv.length);
+    
+    // Convertir a base64
+    return btoa(String.fromCharCode(...result));
+}
+
+export async function decryptToken(encryptedToken: string, key: string = ENCRYPTION_KEY): Promise<string> {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    
+    // Decodificar desde base64
+    const encrypted = Uint8Array.from(atob(encryptedToken), c => c.charCodeAt(0));
+    
+    // Extraer salt, iv y datos
+    const salt = encrypted.slice(0, 16);
+    const iv = encrypted.slice(16, 28);
+    const data = encrypted.slice(28);
+    
+    // Derivar clave
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(ENCRYPTION_KEY),
+        'PBKDF2',
+        false,
+        ['deriveBits', 'deriveKey']
+    );
+    
+    const key = await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256',
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+    );
+    
+    // Desencriptar
+    const decryptedData = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        data
+    );
+    
+    return decoder.decode(decryptedData);
 }
 
 function validateConfig(): void {
@@ -88,14 +184,16 @@ function validateConfig(): void {
         console.error('    --url=http://10.6.46.114:3013 \\');
         console.error('    --token=secret \\');
         console.error('    --prefix=/prod \\');
-        console.error('    --config=https://tu-config.deno.dev/items');
+        console.error('    --config=https://tu-config.deno.dev/items \\');
+        console.error('    --key=mi-clave-secreta');
         console.error('\n💡 Ejemplo modo IP pública:');
         console.error('  deno run --allow-net --allow-env register.ts \\');
         console.error('    --name=prod \\');
         console.error('    --port=3013 \\');
         console.error('    --token=secret \\');
         console.error('    --prefix=/prod \\');
-        console.error('    --config=https://tu-proyecto.deno.dev/items');
+        console.error('    --config=https://tu-proyecto.deno.dev/items \\');
+        console.error('    --key=mi-clave-secreta');
         Deno.exit(1);
     }
 }
@@ -132,10 +230,13 @@ async function registerBackend(): Promise<boolean> {
         };
         const timestamp = new Date().toISOString();
         
+        // Encriptar el token antes de guardarlo
+        const encryptedToken = await encryptToken(CONFIG.token, ENCRYPTION_KEY);
+        
         const backendData: BackendConfig = {
             name: CONFIG.name,
             url: finalURL,
-            token: CONFIG.token,
+            token: encryptedToken, // Token encriptado
             prefix: CONFIG.prefix,
             metadata: {
                 registeredAt: timestamp,
@@ -157,7 +258,7 @@ async function registerBackend(): Promise<boolean> {
         });
         
         if (response.ok) {
-            console.log(`✅ Registrado (${response.status})`);
+            console.log(`✅ Registrado (${response.status}) 🔐 Token encriptado`);
             return true;
         } else {
             console.error(`❌ Error ${response.status}`);
