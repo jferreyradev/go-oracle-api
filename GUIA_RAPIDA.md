@@ -119,7 +119,7 @@ curl http://localhost:3000/logs \
 
 ```bash
 cd proxy
-deno run --allow-net --allow-env proxy.ts --port 8000
+deno run --allow-net --allow-env proxy-deploy.ts
 ```
 
 ### Flujo de autenticación

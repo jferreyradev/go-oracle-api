@@ -11,7 +11,7 @@ go-oracle-api.exe          # Ejecutable compilado
 ## 🌐 Proxy (Deno)
 ```
 proxy/
-  ├── proxy.ts             # Servidor proxy con autenticación
+  ├── proxy-deploy.ts      # Servidor proxy con autenticación y multi-backend
   └── frontend/
       └── index.html       # Interfaz web para pruebas
 ```
@@ -94,7 +94,7 @@ go-oracle-api/
 │   ├── FIREWALL_WINDOWS.md
 │   └── USO_Y_PRUEBAS.md
 ├── proxy/
-│   ├── proxy.ts
+│   ├── proxy-deploy.ts
 │   └── frontend/
 │       └── index.html
 ├── sql/
@@ -108,7 +108,7 @@ go-oracle-api/
 ## 📝 NOTAS
 
 1. **main.go** - Contiene toda la lógica del backend
-2. **proxy.ts** - Maneja autenticación y reenvío de requests
+2. **proxy-deploy.ts** - Maneja autenticación, multi-backend y reenvío de requests
 3. **index.html** - UI completa para testing con 9 botones predefinidos
 4. **test_final.ts** - Test de 5 puntos que verifica todo el sistema
 5. **guia_campo_schema.ts** - Documentación interactiva del uso de 'schema'
@@ -122,7 +122,7 @@ go build -o go-oracle-api.exe
 
 # Proxy
 cd proxy
-deno run --allow-net --allow-read proxy.ts
+deno run --allow-net --allow-env proxy-deploy.ts
 
 # Test
 deno run --allow-net tests\test_final.ts

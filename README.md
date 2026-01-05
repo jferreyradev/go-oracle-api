@@ -138,7 +138,7 @@ El proyecto incluye una interfaz web completa accesible a través del proxy en `
 - 💾 **Persistencia local** (guarda tu sesión en LocalStorage)
 - 🔒 **Sistema de login** integrado (admin/admin123)
 
-**Acceso:** Inicia el proxy (`deno run --allow-net --allow-read proxy/proxy.ts`) y visita `http://localhost:8000/frontend`
+**Acceso:** Inicia el proxy (`deno run --allow-net --allow-env proxy/proxy-deploy.ts`) y visita `http://localhost:8000/frontend`
 
 ## Endpoints disponibles
 
