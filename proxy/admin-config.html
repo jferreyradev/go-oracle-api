@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador de Config Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+
+        .header p {
+            color: #666;
+        }
+
+        .config-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .config-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-edit {
+            background: #f59e0b;
+            color: white;
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .btn-edit:hover {
+            background: #d97706;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 158, 11, 0.4);
+        }
+
+        .backends-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .backend-card {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+
+        .backend-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .backend-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .backend-name {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .backend-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .backend-info {
+            display: grid;
+            gap: 8px;
+            font-size: 0.9em;
+        }
+
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #555;
+            min-width: 100px;
+        }
+
+        .info-value {
+            color: #333;
+            word-break: break-all;
+        }
+
+        .token-masked {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #10b981;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #ef4444;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 2px solid #3b82f6;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 1.2em;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            background: #667eea;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .backend-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Administrador de Config Service</h1>
+            <p>Gestiona los backends de tu sistema de proxy multi-backend</p>
+        </div>
+
+        <!-- Configuración de API -->
+        <div class="config-section">
+            <h2>⚙️ Configuración de API</h2>
+            <div class="input-group">
+                <label>URL del Config Service</label>
+                <input type="text" id="apiUrl" placeholder="https://tu-proyecto.deno.dev" value="http://localhost:8000">
+            </div>
+            <button class="btn btn-success" onclick="testConnection()">🔌 Probar Conexión</button>
+        </div>
+
+        <!-- Mensajes -->
+        <div id="alertContainer"></div>
+
+        <!-- Formulario de Backend -->
+        <div class="config-section">
+            <h2 id="formTitle">➕ Agregar Nuevo Backend</h2>
+            <form id="backendForm">
+                <div class="input-group">
+                    <label>Nombre <span style="color: red;">*</span></label>
+                    <input type="text" id="name" placeholder="produccion" required>
+                </div>
+                <div class="input-group">
+                    <label>URL del Backend <span style="color: red;">*</span></label>
+                    <input type="text" id="url" placeholder="http://backend-prod.example.com:8080" required>
+                </div>
+                <div class="input-group">
+                    <label>Token de Autorización <span style="color: red;">*</span></label>
+                    <input type="text" id="token" placeholder="Bearer abc123..." required>
+                </div>
+                <div class="input-group">
+                    <label>Prefijo de Ruta <span style="color: red;">*</span></label>
+                    <input type="text" id="prefix" placeholder="/prod" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">💾 Guardar Backend</button>
+                    <button type="button" class="btn btn-edit" id="cancelBtn" onclick="cancelEdit()" style="display: none;">❌ Cancelar</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Lista de Backends -->
+        <div class="config-section">
+            <h2>📋 Backends Registrados <span id="backendCount" class="badge">0</span></h2>
+            <div id="backendsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let editingBackend = null;
+
+        // Cargar backends al iniciar
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBackends();
+        });
+
+        // Formulario
+        document.getElementById('backendForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveBackend();
+        });
+
+        function getApiUrl() {
+            return document.getElementById('apiUrl').value.trim();
+        }
+
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        async function testConnection() {
+            try {
+                showAlert('Probando conexión...', 'info');
+                const response = await fetch(getApiUrl());
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert(`✅ Conexión exitosa! Servicio: ${data.service} v${data.version}`, 'success');
+                    loadBackends();
+                } else {
+                    showAlert('❌ Error al conectar: ' + response.statusText, 'error');
+                }
+            } catch (error) {
+                showAlert('❌ Error de conexión: ' + error.message, 'error');
+            }
+        }
+
+        async function loadBackends() {
+            const container = document.getElementById('backendsList');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Cargando backends...</div>';
+            
+            try {
+                const response = await fetch(getApiUrl() + '/items');
+                if (!response.ok) {
+                    throw new Error('Error al cargar backends: ' + response.statusText);
+                }
+                
+                const backends = await response.json();
+                document.getElementById('backendCount').textContent = backends.length;
+                
+                if (backends.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📦</div>
+                            <h3>No hay backends registrados</h3>
+                            <p>Agrega tu primer backend usando el formulario de arriba</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '';
+                backends.forEach(backend => {
+                    const card = createBackendCard(backend);
+                    container.appendChild(card);
+                });
+                
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="alert alert-error">
+                        ❌ Error al cargar backends: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function createBackendCard(backend) {
+            const card = document.createElement('div');
+            card.className = 'backend-card';
+            
+            const maskedToken = backend.token.substring(0, 10) + '...';
+            const updatedDate = backend.updatedAt ? new Date(backend.updatedAt).toLocaleString('es-ES') : 'N/A';
+            
+            card.innerHTML = `
+                <div class="backend-header">
+                    <div class="backend-name">${backend.name}</div>
+                    <div class="backend-actions">
+                        <button class="btn btn-edit" onclick="editBackend('${backend.name}')">✏️ Editar</button>
+                        <button class="btn btn-danger" onclick="deleteBackend('${backend.name}')">🗑️ Eliminar</button>
+                    </div>
+                </div>
+                <div class="backend-info">
+                    <div class="info-row">
+                        <div class="info-label">URL:</div>
+                        <div class="info-value">${backend.url}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Prefijo:</div>
+                        <div class="info-value">${backend.prefix}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Token:</div>
+                        <div class="info-value"><span class="token-masked">${maskedToken}</span></div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Actualizado:</div>
+                        <div class="info-value">${updatedDate}</div>
+                    </div>
+                </div>
+            `;
+            
+            return card;
+        }
+
+        async function saveBackend() {
+            const name = document.getElementById('name').value.trim().toLowerCase();
+            const url = document.getElementById('url').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const prefix = document.getElementById('prefix').value.trim();
+
+            if (!name || !url || !token || !prefix) {
+                showAlert('Por favor completa todos los campos requeridos', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(getApiUrl() + '/items', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name, url, token, prefix })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Error al guardar backend');
+                }
+
+                const result = await response.json();
+                showAlert(`✅ Backend "${result.name}" ${editingBackend ? 'actualizado' : 'creado'} exitosamente!`, 'success');
+                
+                // Resetear formulario
+                document.getElementById('backendForm').reset();
+                cancelEdit();
+                
+                // Recargar lista
+                await loadBackends();
+                
+            } catch (error) {
+                showAlert('❌ Error: ' + error.message, 'error');
+            }
+        }
+
+        async function editBackend(name) {
+            try {
+                const response = await fetch(getApiUrl() + '/items/' + name);
+                if (!response.ok) {
+                    throw new Error('Error al cargar backend');
+                }
+                
+                const backend = await response.json();
+                
+                // Llenar formulario
+                document.getElementById('name').value = backend.name;
+                document.getElementById('url').value = backend.url;
+                document.getElementById('token').value = backend.token;
+                document.getElementById('prefix').value = backend.prefix;
+                
+                // Cambiar UI
+                document.getElementById('formTitle').textContent = '✏️ Editar Backend';
+                document.getElementById('submitBtn').textContent = '💾 Actualizar Backend';
+                document.getElementById('cancelBtn').style.display = 'inline-block';
+                document.getElementById('name').disabled = true;
+                
+                editingBackend = name;
+                
+                // Scroll al formulario
+                document.getElementById('backendForm').scrollIntoView({ behavior: 'smooth' });
+                
+            } catch (error) {
+                showAlert('❌ Error al cargar backend: ' + error.message, 'error');
+            }
+        }
+
+        function cancelEdit() {
+            document.getElementById('backendForm').reset();
+            document.getElementById('formTitle').textContent = '➕ Agregar Nuevo Backend';
+            document.getElementById('submitBtn').textContent = '💾 Guardar Backend';
+            document.getElementById('cancelBtn').style.display = 'none';
+            document.getElementById('name').disabled = false;
+            editingBackend = null;
+        }
+
+        async function deleteBackend(name) {
+            if (!confirm(`¿Estás seguro de eliminar el backend "${name}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(getApiUrl() + '/items/' + name, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error al eliminar backend');
+                }
+
+                showAlert(`✅ Backend "${name}" eliminado exitosamente!`, 'success');
+                
+                // Si estábamos editando este backend, cancelar edición
+                if (editingBackend === name) {
+                    cancelEdit();
+                }
+                
+                await loadBackends();
+                
+            } catch (error) {
+                showAlert('❌ Error al eliminar: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
