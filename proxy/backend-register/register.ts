@@ -1,22 +1,15 @@
 #!/usr/bin/env -S deno run --allow-net --allow-env
 /**
- * Backend Auto-Registration
+ * Backend Auto-Registration (Versión Standalone)
  * 
  * Uso:
- *   deno run --allow-net --allow-env register.ts \
+ *   deno run -A register-standalone.ts \
  *     --name=prod \
  *     --url=http://10.6.46.114:3013 \
  *     --token=secret \
  *     --prefix=/prod \
  *     --config=https://tu-config.deno.dev/items \
- *     --key=mi-clave-secreta \
  *     --daemon
- * 
- * Con IP pública automática:
- *   Agregar: --use-public-ip --port=3013
- * 
- * Parámetros opcionales:
- *   --key : Clave de encriptación personalizada (default: clave por defecto)
  */
 
 function parseArgs(): Record<string, string> {
@@ -44,8 +37,6 @@ const CONFIG = {
 
 const DAEMON_INTERVAL = 5 * 60 * 1000;
 const isDaemon = Deno.args.includes('--daemon');
-
-// Clave de encriptación (línea de comando > variable de entorno > default)
 const ENCRYPTION_KEY = args.key || Deno.env.get('ENCRYPTION_KEY') || 'go-oracle-api-secure-key-2026';
 
 interface BackendConfig {
@@ -60,12 +51,11 @@ interface BackendConfig {
     };
 }
 
-// Funciones de encriptación (exportadas para usar en proxy)
-export async function encryptToken(token: string, key: string = ENCRYPTION_KEY): Promise<string> {
+// Funciones de encriptación
+async function encryptToken(token: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(token);
     
-    // Derivar clave desde la contraseña
     const keyMaterial = await crypto.subtle.importKey(
         'raw',
         encoder.encode(ENCRYPTION_KEY),
@@ -95,67 +85,17 @@ export async function encryptToken(token: string, key: string = ENCRYPTION_KEY):
         data
     );
     
-    // Combinar salt + iv + datos encriptados
     const result = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
     result.set(salt, 0);
     result.set(iv, salt.length);
     result.set(new Uint8Array(encryptedData), salt.length + iv.length);
     
-    // Convertir a base64
     return btoa(String.fromCharCode(...result));
 }
 
-export async function decryptToken(encryptedToken: string, key: string = ENCRYPTION_KEY): Promise<string> {
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    
-    // Decodificar desde base64
-    const encrypted = Uint8Array.from(atob(encryptedToken), c => c.charCodeAt(0));
-    
-    // Extraer salt, iv y datos
-    const salt = encrypted.slice(0, 16);
-    const iv = encrypted.slice(16, 28);
-    const data = encrypted.slice(28);
-    
-    // Derivar clave
-    const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(ENCRYPTION_KEY),
-        'PBKDF2',
-        false,
-        ['deriveBits', 'deriveKey']
-    );
-    
-    const derivedKey = await crypto.subtle.deriveKey(
-        {
-            name: 'PBKDF2',
-            salt: salt,
-            iterations: 100000,
-            hash: 'SHA-256',
-        },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-    );
-    
-    // Desencriptar
-    const decryptedData = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv },
-        derivedKey,
-        data
-    );
-    
-    return decoder.decode(decryptedData);
-}
-
 function validateConfig(): void {
-    // Validar que solo se use un modo
     if (CONFIG.usePublicIP && CONFIG.url) {
         console.error('❌ Error: No puedes usar --url y --use-public-ip al mismo tiempo');
-        console.error('\n📋 Elige un modo:');
-        console.error('   Modo 1: --url=http://10.6.46.114:3013');
-        console.error('   Modo 2: --use-public-ip --port=3013');
         Deno.exit(1);
     }
     
@@ -166,11 +106,9 @@ function validateConfig(): void {
         { key: 'configApiUrl', value: CONFIG.configApiUrl, flag: '--config' },
     ];
     
-    // URL es requerida solo si no se usa --use-public-ip
     if (!CONFIG.usePublicIP) {
         required.push({ key: 'url', value: CONFIG.url, flag: '--url' });
     } else {
-        // Con --use-public-ip, requerir --port
         required.push({ key: 'port', value: CONFIG.port, flag: '--port' });
     }
     
@@ -178,22 +116,13 @@ function validateConfig(): void {
     
     if (missing.length > 0) {
         console.error(`❌ Faltan: ${missing.map(m => m.flag).join(', ')}`);
-        console.error('\n💡 Ejemplo modo manual:');
-        console.error('  deno run --allow-net --allow-env register.ts \\');
-        console.error('    --name=prod \\');
-        console.error('    --url=http://10.6.46.114:3013 \\');
-        console.error('    --token=secret \\');
-        console.error('    --prefix=/prod \\');
-        console.error('    --config=https://tu-config.deno.dev/items \\');
-        console.error('    --key=mi-clave-secreta');
-        console.error('\n💡 Ejemplo modo IP pública:');
-        console.error('  deno run --allow-net --allow-env register.ts \\');
-        console.error('    --name=prod \\');
-        console.error('    --port=3013 \\');
-        console.error('    --token=secret \\');
-        console.error('    --prefix=/prod \\');
-        console.error('    --config=https://tu-proyecto.deno.dev/items \\');
-        console.error('    --key=mi-clave-secreta');
+        console.error('\n💡 Ejemplo:');
+        console.error('  deno run -A register-standalone.ts \\');
+        console.error('    --name=desarrollo \\');
+        console.error('    --url=http://localhost:3000 \\');
+        console.error('    --token=token123 \\');
+        console.error('    --prefix=/desa \\');
+        console.error('    --config=https://backends-proliq.deno.dev/items');
         Deno.exit(1);
     }
 }
@@ -230,13 +159,12 @@ async function registerBackend(): Promise<boolean> {
         };
         const timestamp = new Date().toISOString();
         
-        // Encriptar el token antes de guardarlo
-        const encryptedToken = await encryptToken(CONFIG.token, ENCRYPTION_KEY);
+        const encryptedToken = await encryptToken(CONFIG.token);
         
         const backendData: BackendConfig = {
             name: CONFIG.name,
             url: finalURL,
-            token: encryptedToken, // Token encriptado
+            token: encryptedToken,
             prefix: CONFIG.prefix,
             metadata: {
                 registeredAt: timestamp,
@@ -248,8 +176,12 @@ async function registerBackend(): Promise<boolean> {
         if (CONFIG.usePublicIP) {
             console.log(`🔄 Registrando "${CONFIG.name}" - IP: ${publicIP}:${CONFIG.port}`);
         } else {
-            console.log(`🔄 Registrando "${CONFIG.name}" (${finalURL})`);
+            console.log(`🔄 Registrando "${CONFIG.name}" - URL: ${CONFIG.url}`);
         }
+        
+        console.log(`   Prefix: ${CONFIG.prefix}`);
+        console.log(`   Token: ${CONFIG.token.substring(0, 4)}***`);
+        console.log(`   Config API: ${CONFIG.configApiUrl}`);
         
         const response = await fetch(CONFIG.configApiUrl, {
             method: 'POST',
@@ -257,52 +189,49 @@ async function registerBackend(): Promise<boolean> {
             body: JSON.stringify(backendData),
         });
         
-        if (response.ok) {
-            console.log(`✅ Registrado (${response.status}) 🔐 Token encriptado`);
-            return true;
-        } else {
-            console.error(`❌ Error ${response.status}`);
+        if (!response.ok) {
+            console.error(`❌ Error registrando: ${response.status} ${response.statusText}`);
+            const error = await response.text();
+            console.error('Respuesta:', error);
             return false;
         }
+        
+        const result = await response.json();
+        console.log(`✅ Backend registrado exitosamente`);
+        console.log(`\n📋 Detalles:`);
+        console.log(`   Nombre: ${backendData.name}`);
+        console.log(`   URL: ${backendData.url}`);
+        console.log(`   Prefix: ${backendData.prefix}`);
+        console.log(`   Registrado: ${timestamp}`);
+        
+        return true;
     } catch (error) {
-        console.error(`❌ ${(error as Error).message}`);
+        console.error('❌ Error:', error.message);
         return false;
     }
 }
 
-async function runDaemon(): Promise<void> {
-    console.log('🔁 Daemon iniciado (Ctrl+C para detener)\n');
+async function main() {
+    console.log('\x1b[1m\x1b[36m📝 Backend Registration\x1b[0m\n');
     
-    await registerBackend();
-    
-    Deno.addSignalListener('SIGINT', () => {
-        console.log('\n👋 Deteniendo...');
-        Deno.exit(0);
-    });
-    
-    while (true) {
-        await new Promise(resolve => setTimeout(resolve, DAEMON_INTERVAL));
-        console.log(`\n⏰ [${new Date().toLocaleTimeString()}]`);
-        await registerBackend();
-    }
-}
-
-async function main(): Promise<void> {
     validateConfig();
     
     if (isDaemon) {
-        await runDaemon();
+        console.log(`⏰ Modo daemon activado (cada ${DAEMON_INTERVAL / 1000 / 60} minutos)\n`);
+        
+        while (true) {
+            const success = await registerBackend();
+            if (success) {
+                console.log(`\n⏳ Próximo intento en ${DAEMON_INTERVAL / 1000 / 60} minutos...\n`);
+            } else {
+                console.log(`\n⏳ Reintentando en ${DAEMON_INTERVAL / 1000 / 60} minutos...\n`);
+            }
+            await new Promise(resolve => setTimeout(resolve, DAEMON_INTERVAL));
+        }
     } else {
         const success = await registerBackend();
         Deno.exit(success ? 0 : 1);
     }
 }
 
-if (import.meta.main) {
-    try {
-        await main();
-    } catch (error) {
-        console.error('❌ Error fatal:', (error as Error).message);
-        Deno.exit(1);
-    }
-}
+main();
