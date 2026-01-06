@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-net --allow-env
+#!/usr/bin/env -S deno run --allow-net --allow-env --allow-read
 
 /**
  * Proxy Server para go-oracle-api
@@ -9,7 +9,7 @@
  * - Logging de todas las requests
  * - CORS automático
  * - Rate limiting opcional
- * - Compatible con Deno Deploy
+ * - Compatible con Deno Deploy (con Deno KV para sesiones)
  * - Desencriptación automática de tokens AES-256-GCM
  * 
  * Uso:
@@ -46,6 +46,15 @@
  *   POST /staging/execute  → http://10.6.150.91:3000/execute
  *   POST /dev/execute      → http://localhost:3013/execute
  */
+
+// Inicializar Deno KV si está disponible (Deno Deploy)
+let kv: Deno.Kv | null = null;
+try {
+    kv = await Deno.openKv();
+    console.log('✓ Deno KV disponible para persistencia de sesiones');
+} catch {
+    console.warn('⚠️  Deno KV no disponible, sesiones en memoria (solo local)');
+}
 
 // Clave de encriptación (debe ser la misma que en register.ts)
 const ENCRYPTION_KEY = Deno.env.get('ENCRYPTION_KEY') || 'go-oracle-api-secure-key-2026';
@@ -294,8 +303,55 @@ const users: Map<string, User> = new Map([
     ['demo', { username: 'demo', password: 'demo', role: 'readonly' }],
 ]);
 
-// Sesiones activas (nota: se pierden en Deploy redeploys, considera usar Deno KV)
-const sessions: Map<string, Session> = new Map();
+// Sesiones activas (con fallback en memoria si Deno KV no está disponible)
+const sessionsMemory: Map<string, Session> = new Map();
+
+// Funciones para gestionar sesiones con KV como storage principal
+async function storeSession(session: Session): Promise<void> {
+    if (kv) {
+        try {
+            await kv.set(['sessions', session.token], session, { 
+                expireIn: session.expiresAt - Date.now()
+            });
+        } catch (error) {
+            console.warn('Error storing session in KV:', error.message);
+            sessionsMemory.set(session.token, session);
+        }
+    } else {
+        sessionsMemory.set(session.token, session);
+    }
+}
+
+async function getSession(token: string): Promise<Session | null> {
+    if (kv) {
+        try {
+            const result = await kv.get(['sessions', token]);
+            if (result.value) {
+                return result.value as Session;
+            }
+        } catch (error) {
+            console.warn('Error getting session from KV:', error.message);
+        }
+    }
+    
+    const memorySession = sessionsMemory.get(token);
+    if (memorySession && memorySession.expiresAt > Date.now()) {
+        return memorySession;
+    }
+    
+    return null;
+}
+
+async function deleteSession(token: string): Promise<void> {
+    if (kv) {
+        try {
+            await kv.delete(['sessions', token]);
+        } catch (error) {
+            console.warn('Error deleting session from KV:', error.message);
+        }
+    }
+    sessionsMemory.delete(token);
+}
 
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 horas
 const SESSION_INACTIVITY = 2 * 60 * 60 * 1000; // 2 horas de inactividad
@@ -307,30 +363,30 @@ function generateToken(): string {
     return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Limpiar sesiones expiradas
+// Limpiar sesiones expiradas (solo en memoria local)
 function cleanExpiredSessions() {
     const now = Date.now();
-    for (const [token, session] of sessions.entries()) {
+    for (const [token, session] of sessionsMemory.entries()) {
         if (now > session.expiresAt || (now - session.lastActivity) > SESSION_INACTIVITY) {
-            sessions.delete(token);
+            sessionsMemory.delete(token);
         }
     }
 }
 
-// Validar token
-function validateToken(token: string): Session | null {
-    cleanExpiredSessions();
-    const session = sessions.get(token);
+// Validar token (ahora async para acceder a KV)
+async function validateToken(token: string): Promise<Session | null> {
+    const session = await getSession(token);
     if (!session) return null;
     
     const now = Date.now();
     if (now > session.expiresAt || (now - session.lastActivity) > SESSION_INACTIVITY) {
-        sessions.delete(token);
+        await deleteSession(token);
         return null;
     }
     
     // Actualizar última actividad
     session.lastActivity = now;
+    await storeSession(session);
     return session;
 }
 
@@ -443,7 +499,7 @@ async function handleRequest(req: Request): Promise<Response> {
             });
         }
         
-        const session = validateToken(token);
+        const session = await validateToken(token);
         if (!session) {
             stats.errorRequests++;
             const duration = Date.now() - startTime;
@@ -614,7 +670,7 @@ async function handleLoginRequest(req: Request): Promise<Response> {
             lastActivity: now,
         };
         
-        sessions.set(token, session);
+        await storeSession(session);
         stats.loginSuccess++;
         
         return new Response(JSON.stringify({ 
@@ -648,12 +704,12 @@ async function handleLoginRequest(req: Request): Promise<Response> {
 }
 
 // Endpoint de logout
-function handleLogoutRequest(req: Request): Response {
+async function handleLogoutRequest(req: Request): Promise<Response> {
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
     
-    if (token && sessions.has(token)) {
-        sessions.delete(token);
+    if (token && (await getSession(token))) {
+        await deleteSession(token);
         return new Response(JSON.stringify({ 
             success: true,
             message: 'Logout exitoso'
@@ -735,7 +791,7 @@ async function handler(req: Request): Promise<Response> {
     
     // Endpoint de logout
     if (url.pathname === '/logout' && req.method === 'POST') {
-        return handleLogoutRequest(req);
+        return await handleLogoutRequest(req);
     }
     
     // Endpoint especial para ver estadísticas del proxy
