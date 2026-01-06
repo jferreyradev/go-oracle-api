@@ -75,7 +75,7 @@ export async function encryptToken(token: string, key: string = ENCRYPTION_KEY):
     );
     
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await crypto.subtle.deriveKey(
+    const derivedKey = await crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
             salt: salt,
@@ -91,7 +91,7 @@ export async function encryptToken(token: string, key: string = ENCRYPTION_KEY):
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encryptedData = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv: iv },
-        key,
+        derivedKey,
         data
     );
     
@@ -126,7 +126,7 @@ export async function decryptToken(encryptedToken: string, key: string = ENCRYPT
         ['deriveBits', 'deriveKey']
     );
     
-    const key = await crypto.subtle.deriveKey(
+    const derivedKey = await crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
             salt: salt,
@@ -142,7 +142,7 @@ export async function decryptToken(encryptedToken: string, key: string = ENCRYPT
     // Desencriptar
     const decryptedData = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: iv },
-        key,
+        derivedKey,
         data
     );
     
