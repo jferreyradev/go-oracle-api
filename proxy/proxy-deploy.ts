@@ -121,6 +121,12 @@ let isFetchingBackends = false;
 // Cargar backends desde endpoint HTTP
 async function fetchBackendsFromAPI(): Promise<BackendConfig[]> {
     try {
+        // Validar que CONFIG_API_URL esté configurada
+        if (!BACKENDS_URL) {
+            console.warn('⚠️  CONFIG_API_URL no está configurada. Use variables de entorno o fallback.');
+            return [];
+        }
+
         console.log(`🔄 Cargando backends desde ${BACKENDS_URL}...`);
         const response = await fetch(BACKENDS_URL);
         
