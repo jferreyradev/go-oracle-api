@@ -4,6 +4,7 @@ oracle-api
 oracle-api.exe
 go-oracle-api
 go-oracle-api.exe
+go-oracle-api-async.exe
 *.exe
 *.out
 *.test

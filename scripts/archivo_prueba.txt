@@ -1,2 +1,0 @@
-Este es un archivo de prueba para la API Go Oracle.
-Puedes eliminarlo o reemplazarlo por cualquier archivo que desees subir como BLOB.

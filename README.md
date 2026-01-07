@@ -14,6 +14,7 @@ Este microservicio resuelve ese problema actuando como un puente seguro y ligero
 - Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
 - Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
 - **Soporte completo para procedimientos y funciones de paquetes Oracle**.
+- **Campo `schema` separado** para especificar el esquema sin ambigüedad.
 - **Detección automática de tipos de datos** para parámetros OUT (NUMBER, VARCHAR2).
 - **Manejo inteligente de fechas** con conversión automática desde formatos estándar.
 - **Consultas multilínea** con normalización automática de saltos de línea.
@@ -97,13 +98,11 @@ start go-oracle-api.exe .env3 8083 "Desarrollo"
 ```
 
 #### Script automatizado:
-```sh
-# Windows
-scripts\run_multiple_instances.bat
-scripts\monitor_instances.bat
-
-# Linux/macOS  
+```bash
+# Dar permisos de ejecución (primera vez)
 chmod +x scripts/*.sh
+
+# Ejecutar scripts
 ./scripts/run_multiple_instances.sh
 ./scripts/monitor_instances.sh
 ```
@@ -133,14 +132,63 @@ Cada instancia se identifica de las siguientes maneras:
 - **`/ping`** - Verificación de estado y conectividad con Oracle
 - **`/query`** - Ejecutar consultas SELECT (soporta multilínea)
 - **`/exec`** - Ejecutar sentencias de modificación (INSERT, UPDATE, DELETE, DDL)
-- **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle
+- **`/procedure`** - Ejecutar procedimientos y funciones de paquetes Oracle (síncrono)
+- **`/procedure/async`** - Ejecutar procedimientos de larga duración en segundo plano
+- **`/jobs/{id}`** - Consultar estado de un job asíncrono específico
+- **`/jobs`** - Listar y gestionar jobs asíncronos (GET, DELETE)
 - **`/upload`** - Subir archivos como BLOB a la base de datos
-- **`/logs`** - Consultar logs de la API
+- **`/logs`** - Consultar logs de consultas ejecutadas
 - **`/docs`** - Documentación integrada
+
+### 📋 Sistema de Jobs Asíncronos
+
+El sistema de jobs permite ejecutar procedimientos en segundo plano con monitoreo en tiempo real:
+
+```javascript
+// Crear job
+const res = await fetch('/procedure/async', {
+  method: 'POST',
+  body: JSON.stringify({
+    name: "PROC_LARGO",
+    params: [{ name: "p1", value: 100 }]
+  })
+});
+const { job_id } = await res.json();
+
+// Monitorear progreso
+const job = await fetch(`/jobs/${job_id}`).then(r => r.json());
+console.log(`Estado: ${job.status} (${job.progress}%)`);
+```
+
+**Características:**
+- ✅ Ejecución no bloqueante
+- ✅ Progreso en tiempo real (0-100%)
+- ✅ Persistencia en Oracle (sobrevive a reinicios)
+- ✅ Limpieza automática de jobs antiguos
+- ✅ Mensajes de error mejorados
+
+**Documentación completa:** [docs/ASYNC_JOBS.md](docs/ASYNC_JOBS.md)
 
 ## Funcionalidades destacadas
 
 ### 🔧 Procedimientos y Funciones de Paquetes
+
+El backend maneja automáticamente la nomenclatura de objetos Oracle mediante la función helper `formatObjectName()`, que centraliza la lógica de formateo en un solo lugar.
+
+**Uso con campo `schema` (recomendado para claridad):**
+```json
+{
+  "schema": "WORKFLOW",
+  "name": "MI_FUNCION",
+  "isFunction": true,
+  "params": [
+    { "name": "result", "direction": "OUT", "type": "number" },
+    { "name": "input_param", "value": 123 }
+  ]
+}
+```
+
+**Uso tradicional (esquema.paquete.función):**
 ```json
 {
   "name": "SCHEMA.PACKAGE.FUNCTION_NAME",
@@ -150,6 +198,11 @@ Cada instancia se identifica de las siguientes maneras:
     { "name": "result", "direction": "OUT", "type": "number" }
   ]
 }
+```
+
+**⚠️ Nota sobre conflictos de nomenclatura:** Si existe un PACKAGE con el mismo nombre que un SCHEMA/USER, Oracle interpretará `SCHEMA.FUNCION` como `PACKAGE.FUNCION`. En estos casos, usa sinónimos:
+```sql
+CREATE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;
 ```
 
 ### 📅 Manejo Automático de Fechas
@@ -170,13 +223,32 @@ Cada instancia se identifica de las siguientes maneras:
 }
 ```
 
-## Documentación
+## 📚 Documentación
 
-- **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
-- **[FUNCIONALIDADES_AVANZADAS.md](docs/FUNCIONALIDADES_AVANZADAS.md)** - Funcionalidades avanzadas y buenas prácticas
-- **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue
-- **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall en Windows
+### Guías Principales
+- **[GUIA_RAPIDA.md](GUIA_RAPIDA.md)** - ⭐ Guía de inicio rápido y referencia
+
+### Documentación Detallada
+- **[ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - Sistema de jobs asíncronos
+- **[SCHEMA_FIELD.md](docs/SCHEMA_FIELD.md)** - Campo schema y nomenclatura Oracle
+- **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Ejemplos de uso completos
+- **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Variables de entorno
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Despliegue en producción
+- **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall
+
+### 🧪 Ejemplo y Tests
+
+```bash
+# Ejecutar ejemplo completo (demuestra todas las funcionalidades)
+node examples/ejemplo_completo.js
+
+# Ejecutar suite de tests (7 tests completos)
+node tests/test_completo.js
+
+# Probar endpoint específico
+node scripts/test.js ping
+node scripts/test.js query POST '{"query":"SELECT USER FROM DUAL"}'
+```
 
 ---
 
