@@ -1,14 +1,50 @@
 # 🚀 Guía Rápida - go-oracle-api
 
-Referencia rápida para usar la API y el Proxy Server.
+Referencia rápida para usar la API.
 
 ---
 
-## 📋 Tabla de Contenidos
+## 📋 Contenido
 
+- [Inicio Rápido](#-inicio-rápido)
 - [API Backend](#-api-backend)
-- [Proxy Server](#-proxy-server)
 - [Ejemplos Completos](#-ejemplos-completos)
+- [Troubleshooting](#-troubleshooting)
+
+---
+
+## ⚡ Inicio Rápido
+
+### 1. Configurar
+```bash
+cp .env.example .env
+# Editar .env con tus credenciales
+```
+
+### 2. Instalar en Oracle (primera vez)
+```bash
+sqlplus user/pass@db @sql/create_async_jobs_table.sql
+sqlplus user/pass@db @sql/create_query_log_table.sql
+sqlplus user/pass@db @sql/create_test_procedures.sql
+```
+
+### 3. Iniciar API
+```bash
+go run main.go
+# API en http://localhost:3000
+```
+
+### 4. Probar
+```bash
+# Ejemplo completo
+node examples/ejemplo_completo.js
+
+# Tests completos
+node tests/test_completo.js
+
+# Endpoint específico
+node scripts/test.js ping
+```
 
 ---
 
@@ -113,102 +149,16 @@ curl http://localhost:3000/logs \
 
 ---
 
-## 🔐 Proxy Server
+## � Ejemplos Completos
 
-### Iniciar proxy
-
-```bash
-cd proxy
-deno run --allow-net --allow-env proxy-deploy.ts
-```
-
-### Flujo de autenticación
-
-#### 1. Login - Obtener token
-```bash
-curl -X POST http://localhost:8000/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin",
-    "password": "admin123"
-  }'
-
-# Respuesta:
-# {
-#   "token": "a1b2c3d4e5f6...",
-#   "username": "admin",
-#   "role": "admin",
-#   "expires_at": "2024-12-17T15:30:00Z"
-# }
-```
-
-#### 2. Usar token en peticiones
-```bash
-# Guardar token
-TOKEN="a1b2c3d4e5f6..."
-
-# Hacer peticiones
-curl http://localhost:8000/ping \
-  -H "Authorization: Bearer $TOKEN"
-
-curl -X POST http://localhost:8000/query \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "SELECT * FROM tabla"}'
-```
-
-#### 3. Logout - Cerrar sesión
-```bash
-curl -X POST http://localhost:8000/logout \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Usuarios disponibles
-
-| Usuario | Password | Rol | Permisos |
-|---------|----------|-----|----------|
-| admin | admin123 | admin | Todos |
-| user | user123 | user | Todos |
-| demo | demo | readonly | Solo GET |
-
-### Endpoints del proxy
-
-```bash
-# Ver usuarios disponibles
-curl http://localhost:8000/_proxy/users
-
-# Ver estadísticas del proxy
-curl http://localhost:8000/_proxy/stats \
-  -H "Authorization: Bearer $TOKEN"
-
-# Todos los endpoints de la API están disponibles
-# Ejemplo: /ping, /query, /procedure, /jobs, etc.
-```
-
----
-
-## 💡 Ejemplos Completos
-
-### Ejemplo 1: Consulta simple con proxy
+### Ejemplo 1: Consulta simple
 
 ```javascript
-// 1. Login
-const loginRes = await fetch('http://localhost:8000/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    username: 'admin',
-    password: 'admin123'
-  })
-});
-
-const { token } = await loginRes.json();
-
-// 2. Hacer consulta
-const queryRes = await fetch('http://localhost:8000/query', {
+// Hacer consulta directa a la API
+const queryRes = await fetch('http://localhost:3000/query', {
   method: 'POST',
   headers: {
-    'Authorization': `Bearer ${token}`,
+    'Authorization': 'Bearer test1',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -223,13 +173,11 @@ console.log(data);
 ### Ejemplo 2: Job asíncrono con monitoreo
 
 ```javascript
-const token = "..."; // Token del login
-
 // 1. Crear job asíncrono
-const createRes = await fetch('http://localhost:8000/procedure/async', {
+const res = await fetch('http://localhost:3000/procedure', {
   method: 'POST',
   headers: {
-    'Authorization': `Bearer ${token}`,
+    'Authorization': 'Bearer test1',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -245,8 +193,8 @@ console.log('Job creado:', job_id);
 
 // 2. Monitorear progreso
 const checkJob = async () => {
-  const res = await fetch(`http://localhost:8000/jobs/${job_id}`, {
-    headers: { 'Authorization': `Bearer ${token}` }
+  const res = await fetch(`http://localhost:3000/jobs/${job_id}`, {
+    headers: { 'Authorization': 'Bearer test1' }
   });
   
   const job = await res.json();
@@ -273,15 +221,14 @@ const interval = setInterval(async () => {
 ### Ejemplo 3: CRUD completo
 
 ```javascript
-const token = "...";
 const headers = {
-  'Authorization': `Bearer ${token}`,
+  'Authorization': 'Bearer test1',
   'Content-Type': 'application/json'
 };
 
 // CREATE
-await fetch('http://localhost:8000/exec', {
-  method: 'POST',
+await fetch('http://localhost:3000/exec', {
+  method: 'POST',3
   headers,
   body: JSON.stringify({
     query: "INSERT INTO productos (nombre, precio) VALUES ('Laptop', 999.99)"
@@ -289,7 +236,7 @@ await fetch('http://localhost:8000/exec', {
 });
 
 // READ
-const productos = await fetch('http://localhost:8000/query', {
+const productos = await fetch('http://localhost:3000/query', {
   method: 'POST',
   headers,
   body: JSON.stringify({
@@ -298,7 +245,7 @@ const productos = await fetch('http://localhost:8000/query', {
 }).then(r => r.json());
 
 // UPDATE
-await fetch('http://localhost:8000/exec', {
+await fetch('http://localhost:3000/exec', {
   method: 'POST',
   headers,
   body: JSON.stringify({
@@ -307,7 +254,7 @@ await fetch('http://localhost:8000/exec', {
 });
 
 // DELETE
-await fetch('http://localhost:8000/exec', {
+await fetch('http://localhost:3000/exec', {
   method: 'POST',
   headers,
   body: JSON.stringify({
@@ -344,122 +291,48 @@ console.log(result.out); // { p_result: "..." }
 
 ---
 
-## 🛠️ Herramientas CLI
+## 🧪 Tests y Ejemplos
 
-### Scripts de testing
-
+### Ejemplo completo
 ```bash
-# Test completo
-node scripts/test_api.js
-
-# Test específico
-node scripts/test_api.js ping
-node scripts/test_api.js query
-node scripts/test_api.js procedure
-node scripts/test_api.js async
-node scripts/test_api.js jobs
+node examples/ejemplo_completo.js
 ```
 
-### Monitoreo de jobs
-
+### Suite de tests
 ```bash
-# Ver todos los jobs
-node scripts/view_status.js jobs
-
-# Ver jobs activos
-node scripts/view_status.js jobs:active
-
-# Ver jobs completados
-node scripts/view_status.js jobs:completed
-
-# Ver jobs fallidos
-node scripts/view_status.js jobs:failed
-
-# Ver logs
-node scripts/view_status.js logs
+node tests/test_completo.js
 ```
 
-### Tests del proxy
-
+### Probar endpoints
 ```bash
-cd proxy/tests
-
-# Test de autenticación
-node test_auth.js
-
-# Test de todos los endpoints
-node test_all_endpoints.js
-
-# Test de integración completa
-node test_proxy_complete.js
+node scripts/test.js ping
+node scripts/test.js query POST '{"query":"SELECT USER FROM DUAL"}'
 ```
-
-### Frontend Web
-
-Abre `proxy/frontend/index.html` en tu navegador para usar la interfaz gráfica.
 
 ---
 
-## 📚 Documentación Completa
+## 📚 Documentación
 
-- **[docs/ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - Sistema de jobs asíncronos
-- **[docs/USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía de uso detallada
-- **[proxy/PROXY_AUTH.md](proxy/PROXY_AUTH.md)** - Autenticación del proxy
+- **[README.md](README.md)** - Documentación principal
+- **[ESTRUCTURA.md](ESTRUCTURA.md)** - Estructura del proyecto
+- **[docs/ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - Sistema de jobs
+- **[docs/USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía de uso
 - **[docs/CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración
 
 ---
 
-## 🔑 Variables de Entorno Clave
-
-```env
-# Backend API
-DB_USER=usuario
-DB_PASSWORD=password
-DB_CONNECTION_STRING=localhost:1521/ORCL
-API_PORT=3000
-API_TOKEN=test1
-
-# Proxy (usa las del backend)
-API_TOKEN=test1
-BACKEND_URL=http://localhost:3000
-```
-
----
-
-## 🚨 Solución de Problemas Comunes
+## 🚨 Troubleshooting
 
 ### Error: "Unauthorized"
 ```bash
-# Verifica que el token sea correcto
-curl http://localhost:3000/ping \
-  -H "Authorization: Bearer test1"
+curl http://localhost:3000/ping -H "Authorization: Bearer test1"
 ```
 
 ### Error: "Procedimiento no encontrado"
 ```bash
-# Instala procedimientos de prueba
-chmod +x scripts/install_jobs_system.sh
-./scripts/install_jobs_system.sh USUARIO PASSWORD DATABASE
-```
-
-### Error: "Token expirado" (proxy)
-```bash
-# Haz login de nuevo
-curl -X POST http://localhost:8000/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
-```
-
-### Error: "Cannot connect to backend" (proxy)
-```bash
-# Verifica que el backend esté corriendo
-curl http://localhost:3000/ping -H "Authorization: Bearer test1"
-
-# Si no responde, inicia el backend
-go run main.go
+sqlplus user/pass@db @sql/create_test_procedures.sql
 ```
 
 ---
 
-**Última actualización:** 16 de diciembre de 2024  
-**Versión:** 2.0
+**Versión:** 2.1 | **Fecha:** 7 de enero de 2026

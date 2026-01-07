@@ -127,19 +127,6 @@ Cada instancia se identifica de las siguientes maneras:
 - **Monitoreo centralizado**: Scripts para verificar estado y logs
 - **Gestión simplificada**: Detener/iniciar instancias específicas
 
-## Interfaz Web Frontend
-
-El proyecto incluye una interfaz web completa accesible a través del proxy en `http://localhost:8000/frontend`:
-
-**Características:**
-- 🎯 **9 botones de prueba rápida** para endpoints comunes
-- ✏️ **Editor JSON personalizable** con resaltado de sintaxis
-- 📊 **Visor de respuestas** con formato automático
-- 💾 **Persistencia local** (guarda tu sesión en LocalStorage)
-- 🔒 **Sistema de login** integrado (admin/admin123)
-
-**Acceso:** Inicia el proxy (`deno run --allow-net --allow-env proxy/proxy-deploy.ts`) y visita `http://localhost:8000/frontend`
-
 ## Endpoints disponibles
 
 - **`/ping`** - Verificación de estado y conectividad con Oracle
@@ -152,7 +139,6 @@ El proyecto incluye una interfaz web completa accesible a través del proxy en `
 - **`/upload`** - Subir archivos como BLOB a la base de datos
 - **`/logs`** - Consultar logs de consultas ejecutadas
 - **`/docs`** - Documentación integrada
-- **`/frontend`** - Interfaz web para pruebas (vía proxy)
 
 ### 📋 Sistema de Jobs Asíncronos
 
@@ -237,23 +223,32 @@ CREATE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;
 }
 ```
 
-## Documentación
+## 📚 Documentación
 
-- **[SCHEMA_FIELD.md](docs/SCHEMA_FIELD.md)** - ⭐ Campo schema y gestión de nomenclatura Oracle
-- **[ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - ⭐ Sistema completo de jobs asíncronos
-- **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Guía completa de uso y ejemplos
-- **[PROCEDIMIENTOS_ASINCRONOS.md](docs/PROCEDIMIENTOS_ASINCRONOS.md)** - Ejecución de procedimientos de larga duración
-- **[PERSISTENCIA_JOBS.md](docs/PERSISTENCIA_JOBS.md)** - Persistencia de jobs asíncronos en Oracle
-- **[FUNCIONALIDADES_AVANZADAS.md](docs/FUNCIONALIDADES_AVANZADAS.md)** - Funcionalidades avanzadas y buenas prácticas
-- **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Configuración del archivo de entorno
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Instrucciones de despliegue
-- **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall en Windows
+### Guías Principales
+- **[GUIA_RAPIDA.md](GUIA_RAPIDA.md)** - ⭐ Guía de inicio rápido y referencia
 
-### 🔧 Scripts de Utilidad
+### Documentación Detallada
+- **[ASYNC_JOBS.md](docs/ASYNC_JOBS.md)** - Sistema de jobs asíncronos
+- **[SCHEMA_FIELD.md](docs/SCHEMA_FIELD.md)** - Campo schema y nomenclatura Oracle
+- **[USO_Y_PRUEBAS.md](docs/USO_Y_PRUEBAS.md)** - Ejemplos de uso completos
+- **[CONFIGURACION_ENV.md](docs/CONFIGURACION_ENV.md)** - Variables de entorno
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Despliegue en producción
+- **[FIREWALL_WINDOWS.md](docs/FIREWALL_WINDOWS.md)** - Configuración de firewall
 
-- **[scripts/test_api.js](scripts/test_api.js)** - Suite de pruebas unificada
-- **[scripts/view_status.js](scripts/view_status.js)** - Monitoreo de jobs y logs
-- **[proxy/](proxy/)** - Proxy server con autenticación y rate limiting
+### 🧪 Ejemplo y Tests
+
+```bash
+# Ejecutar ejemplo completo (demuestra todas las funcionalidades)
+node examples/ejemplo_completo.js
+
+# Ejecutar suite de tests (7 tests completos)
+node tests/test_completo.js
+
+# Probar endpoint específico
+node scripts/test.js ping
+node scripts/test.js query POST '{"query":"SELECT USER FROM DUAL"}'
+```
 
 ---
 

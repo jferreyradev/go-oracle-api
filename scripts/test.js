@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
- * Script de pruebas completo para go-oracle-api
- * Uso: node scripts/test_api.js [test_name]
+ * Script de utilidad para probar endpoints de la API
+ * 
+ * Uso: node scripts/test.js [endpoint] [method] [body_json]
+ * 
  * Ejemplos:
- *   node scripts/test_api.js              # Ejecuta todas las pruebas
- *   node scripts/test_api.js ping         # Solo prueba de ping
- *   node scripts/test_api.js jobs         # Solo pruebas de jobs
+ *   node scripts/test.js ping
+ *   node scripts/test.js query POST '{"query":"SELECT * FROM DUAL"}'
+ *   node scripts/test.js jobs GET
  */
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
