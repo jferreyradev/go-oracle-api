@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -484,7 +485,9 @@ func createQueryLogTable() error {
 	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_SUCCESS ON QUERY_LOG(SUCCESS)"); err != nil {
 		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_SUCCESS: %v", err)
 	}
-	db.Exec("CREATE INDEX IDX_QUERY_LOG_CREATED ON QUERY_LOG(CREATED_AT)")
+	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_CREATED ON QUERY_LOG(CREATED_AT)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_CREATED: %v", err)
+	}
 
 	log.Println("✅ Tabla QUERY_LOG creada exitosamente")
 	return nil
@@ -1023,16 +1026,9 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validar nombre de tabla para prevenir SQL injection
-	// Solo permitir letras, números y guiones bajos
-	validTable := true
-	for _, char := range table {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || char == '_') {
-			validTable = false
-			break
-		}
-	}
-	if !validTable || len(table) > 30 {
+	// Solo permitir letras, números y guiones bajos, máximo 30 caracteres
+	validTableName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	if !validTableName.MatchString(table) || len(table) > 30 {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Nombre de tabla inválido"})
 		return
