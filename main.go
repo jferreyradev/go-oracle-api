@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -79,7 +80,11 @@ var jobManager = &JobManager{
 // generateJobID genera un ID único para el job
 func generateJobID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("Error generando ID: %v", err)
+		// Fallback: usar timestamp
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -360,10 +365,14 @@ func (jm *JobManager) LoadJobsFromDB() {
 				job.Duration = duration.String
 			}
 			if paramsJSON.Valid && paramsJSON.String != "" {
-				json.Unmarshal([]byte(paramsJSON.String), &job.Params)
+				if err := json.Unmarshal([]byte(paramsJSON.String), &job.Params); err != nil {
+					log.Printf("Error deserializando parámetros del job %s: %v", job.ID, err)
+				}
 			}
 			if resultJSON.Valid && resultJSON.String != "" {
-				json.Unmarshal([]byte(resultJSON.String), &job.Result)
+				if err := json.Unmarshal([]byte(resultJSON.String), &job.Result); err != nil {
+					log.Printf("Error deserializando resultado del job %s: %v", job.ID, err)
+				}
 			}
 			if errorMsg.Valid {
 				job.Error = errorMsg.String
@@ -420,9 +429,15 @@ func createTableIfNotExists() error {
 	}
 
 	// Crear índices
-	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_STATUS ON ASYNC_JOBS(STATUS)")
-	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_START_TIME ON ASYNC_JOBS(START_TIME)")
-	db.Exec("CREATE INDEX IDX_ASYNC_JOBS_CREATED_AT ON ASYNC_JOBS(CREATED_AT)")
+	if _, err := db.Exec("CREATE INDEX IDX_ASYNC_JOBS_STATUS ON ASYNC_JOBS(STATUS)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_ASYNC_JOBS_STATUS: %v", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IDX_ASYNC_JOBS_START_TIME ON ASYNC_JOBS(START_TIME)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_ASYNC_JOBS_START_TIME: %v", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IDX_ASYNC_JOBS_CREATED_AT ON ASYNC_JOBS(CREATED_AT)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_ASYNC_JOBS_CREATED_AT: %v", err)
+	}
 
 	log.Println("✅ Tabla ASYNC_JOBS creada exitosamente")
 	return nil
@@ -461,10 +476,18 @@ func createQueryLogTable() error {
 	}
 
 	// Crear índices
-	db.Exec("CREATE INDEX IDX_QUERY_LOG_TYPE ON QUERY_LOG(QUERY_TYPE)")
-	db.Exec("CREATE INDEX IDX_QUERY_LOG_TIME ON QUERY_LOG(EXECUTION_TIME)")
-	db.Exec("CREATE INDEX IDX_QUERY_LOG_SUCCESS ON QUERY_LOG(SUCCESS)")
-	db.Exec("CREATE INDEX IDX_QUERY_LOG_CREATED ON QUERY_LOG(CREATED_AT)")
+	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_TYPE ON QUERY_LOG(QUERY_TYPE)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_TYPE: %v", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_TIME ON QUERY_LOG(EXECUTION_TIME)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_TIME: %v", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_SUCCESS ON QUERY_LOG(SUCCESS)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_SUCCESS: %v", err)
+	}
+	if _, err := db.Exec("CREATE INDEX IDX_QUERY_LOG_CREATED ON QUERY_LOG(CREATED_AT)"); err != nil {
+		log.Printf("⚠️  Error creando índice IDX_QUERY_LOG_CREATED: %v", err)
+	}
 
 	log.Println("✅ Tabla QUERY_LOG creada exitosamente")
 	return nil
@@ -515,7 +538,11 @@ func saveQueryLog(qlog *QueryLog) {
 // generateID genera un ID único para los logs
 func generateID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("Error generando ID: %v", err)
+		// Fallback: usar timestamp
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
 	return fmt.Sprintf("%x", b)
 }
 
@@ -686,7 +713,9 @@ Para más información consulta:
 
 	// Crear carpeta log si no existe
 	if _, err := os.Stat("log"); os.IsNotExist(err) {
-		_ = os.Mkdir("log", 0755)
+		if err := os.Mkdir("log", 0755); err != nil {
+			log.Printf("⚠️  No se pudo crear carpeta log: %v", err)
+		}
 	}
 
 	// Generar nombre de log único por instancia
@@ -698,6 +727,7 @@ Para más información consulta:
 	}
 	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
+		defer logFile.Close()  // Cerrar el archivo al finalizar
 		log.SetOutput(logFile) // Solo archivo, no consola
 	} else {
 		log.SetOutput(os.Stdout)
@@ -995,6 +1025,15 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		table = "archivos"
 	}
 
+	// Validar nombre de tabla para prevenir SQL injection
+	// Solo permitir letras, números y guiones bajos, máximo 30 caracteres
+	validTableName := regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	if !validTableName.MatchString(table) || len(table) > 30 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Nombre de tabla inválido"})
+		return
+	}
+
 	// Query para obtener el archivo
 	query := fmt.Sprintf("SELECT nombre, contenido FROM %s WHERE id = :1", table)
 
@@ -1209,6 +1248,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Procedimiento normal (no función)
+	outParamIndex := 0 // Contador para rastrear índice de parámetros OUT
 	for i, p := range req.Params {
 		placeholders = append(placeholders, fmt.Sprintf(":%d", i+1))
 		if strings.ToUpper(p.Direction) == "OUT" {
@@ -1223,14 +1263,15 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			if isNumeric {
 				var outNum sql.NullFloat64
 				args = append(args, sql.Out{Dest: &outNum, In: false})
-				outIndexes[0] = p.Name
-				outNumMap[0] = &outNum
+				outIndexes[outParamIndex] = p.Name
+				outNumMap[outParamIndex] = &outNum
 			} else {
 				outStr := strings.Repeat(" ", 4000) // Buffer de 4000 caracteres
 				args = append(args, sql.Out{Dest: &outStr, In: false})
-				outIndexes[0] = p.Name
-				outBuffers[0] = &outStr
+				outIndexes[outParamIndex] = p.Name
+				outBuffers[outParamIndex] = &outStr
 			}
+			outParamIndex++ // Incrementar índice para el siguiente OUT
 		} else {
 			// Detección automática de fechas por nombre o formato
 			if strings.Contains(strings.ToLower(p.Name), "fecha") || strings.Contains(strings.ToLower(p.Name), "periodo") {
@@ -1955,7 +1996,11 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		rowsAffected, _ := res.RowsAffected()
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			log.Printf("⚠️  No se pudo obtener rows affected: %v", err)
+			rowsAffected = 0
+		}
 
 		qlog.Success = true
 		qlog.RowsAffected = rowsAffected
