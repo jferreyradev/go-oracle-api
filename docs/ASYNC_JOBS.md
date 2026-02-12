@@ -325,10 +325,10 @@ Ejecuta tests de jobs:
 
 ```bash
 # Test de jobs asíncronos
-node scripts/test_api.js async
+node tests/test.js async
 
 # Test de gestión de jobs
-node scripts/test_api.js jobs
+node tests/test.js jobs
 ```
 
 ## 🧹 Limpieza de Jobs

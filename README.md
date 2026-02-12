@@ -242,12 +242,13 @@ CREATE SYNONYM EXISTE_PROC_CAB FOR WORKFLOW.EXISTE_PROC_CAB;
 # Ejecutar ejemplo completo (demuestra todas las funcionalidades)
 node examples/ejemplo_completo.js
 
-# Ejecutar suite de tests (7 tests completos)
-node tests/test_completo.js
+# Ejecutar suite de tests completa (7 tests)
+node tests/test.js
 
-# Probar endpoint específico
-node scripts/test.js ping
-node scripts/test.js query POST '{"query":"SELECT USER FROM DUAL"}'
+# Ejecutar test específico
+node tests/test.js ping
+node tests/test.js query
+node tests/test.js procedure
 ```
 
 ---

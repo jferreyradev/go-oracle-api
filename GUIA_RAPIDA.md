@@ -39,11 +39,11 @@ go run main.go
 # Ejemplo completo
 node examples/ejemplo_completo.js
 
-# Tests completos
-node tests/test_completo.js
+# Ejecutar todos los tests
+node tests/test.js
 
-# Endpoint específico
-node scripts/test.js ping
+# Test específico
+node tests/test.js ping
 ```
 
 ---
@@ -300,13 +300,13 @@ node examples/ejemplo_completo.js
 
 ### Suite de tests
 ```bash
-node tests/test_completo.js
-```
+# Ejecutar todos los tests
+node tests/test.js
 
-### Probar endpoints
-```bash
-node scripts/test.js ping
-node scripts/test.js query POST '{"query":"SELECT USER FROM DUAL"}'
+# Test específico
+node tests/test.js query
+node tests/test.js procedure
+node tests/test.js async
 ```
 
 ---

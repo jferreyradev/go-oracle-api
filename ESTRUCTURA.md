@@ -57,11 +57,11 @@ go run main.go
 # Ver ejemplo completo
 node examples/ejemplo_completo.js
 
-# Ejecutar tests
-node tests/test_completo.js
+# Ejecutar todos los tests
+node tests/test.js
 
-# Probar endpoint
-node scripts/test.js ping
+# Ejecutar test específico
+node tests/test.js ping
 ```
 
 ## 📝 Endpoints Principales
@@ -87,8 +87,7 @@ node scripts/test.js ping
 |---------|-------------|
 | `main.go` | API completa con todos los endpoints |
 | `examples/ejemplo_completo.js` | Ejemplo que demuestra todas las funcionalidades |
-| `tests/test_completo.js` | Suite completa de tests |
-| `scripts/test.js` | Utilidad para probar endpoints individuales |
+| `tests/test.js` | Suite completa de tests (ping, query, procedure, async, jobs, exec, logging) |
 
 ---
 

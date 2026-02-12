@@ -224,17 +224,20 @@ Ver `sql/fix_cross_schema_access.sql` para más detalles.
 
 ## Prueba automática completa
 
-Puedes usar los scripts de prueba disponibles:
+Usa la suite de tests unificada:
 
 ```bash
-# Test rápido de conectividad
-node scripts/test_quick.js
+# Ejecutar todos los tests
+node tests/test.js
 
-# Test completo de funcionalidad asíncrona
-node scripts/test_async.js
+# Test específico de conectividad
+node tests/test.js ping
 
-# Test de persistencia (crear job y verificar en BD)
-node scripts/test_persistencia.js
+# Test de funcionalidad asíncrona
+node tests/test.js async
+
+# Test de gestión de jobs
+node tests/test.js jobs
 ```
 
 Asegúrate de tener configurado el archivo `.env` y el microservicio en ejecución.
