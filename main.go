@@ -737,6 +737,10 @@ Para más información consulta:
 	// ===============================
 	// 3. Registro de todos los endpoints
 	// ===============================
+	// Servir frontend estático
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", fs)
+	
 	http.HandleFunc("/docs", docsHandler)
 	http.HandleFunc("/logs", logRequest(authMiddleware(logsHandler)))
 	http.HandleFunc("/upload", logRequest(authMiddleware(uploadHandler)))
@@ -890,6 +894,7 @@ Para más información consulta:
 
 	go func() {
 		log.Printf("Servidor escuchando en 0.0.0.0:%s (Ctrl+C para detener)", port)
+		log.Printf("Frontend disponible en: http://localhost:%s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Error al iniciar el servidor: %v", err)
 		}
