@@ -555,7 +555,7 @@ ORDER BY campo1`
 
                 displayResponse(response.status, data);
             } catch (error) {
-                displayResponse(0, { error: error.message });
+                displayResponse(-1, { error: error.message });
             } finally {
                 // Hide loading
                 document.getElementById('btnText').classList.remove('hidden');
@@ -616,7 +616,11 @@ ORDER BY campo1`
             // Status badge
             const isSuccess = status >= 200 && status < 300;
             statusBadge.className = `status-badge ${isSuccess ? 'status-success' : 'status-error'}`;
-            statusBadge.textContent = `HTTP ${status} - ${isSuccess ? 'Success' : 'Error'}`;
+            if (status === -1) {
+                statusBadge.textContent = 'Error de conexión';
+            } else {
+                statusBadge.textContent = `HTTP ${status} - ${isSuccess ? 'Success' : 'Error'}`;
+            }
 
             // Response content
             responseBox.textContent = JSON.stringify(data, null, 2);

@@ -7,7 +7,7 @@ Este directorio contiene el frontend web para probar y usar la API de Oracle.
 - ✅ Interfaz gráfica moderna y responsiva
 - ✅ Soporte para todos los endpoints de la API
 - ✅ Ejemplos predefinidos para cada tipo de operación
-- ✅ Editor de JSON con syntax highlighting
+- ✅ Editor de texto para SQL y JSON
 - ✅ Visualización de respuestas formateadas
 - ✅ Almacenamiento local de configuración (URL y Token)
 - ✅ Sin dependencias externas (HTML, CSS, JavaScript puro)
