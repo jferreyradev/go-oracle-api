@@ -13,6 +13,7 @@ Este microservicio resuelve ese problema actuando como un puente seguro y ligero
 - No requiere que los sistemas consumidores instalen librerías de Oracle.
 - Permite la integración de APIs y servicios hechos en cualquier lenguaje o framework.
 - Permite operaciones de consulta y modificación (SELECT, INSERT, UPDATE, DELETE) a través de una API REST.
+- **Frontend web integrado** para probar y usar la API sin herramientas externas.
 - **Soporte completo para procedimientos y funciones de paquetes Oracle**.
 - **Campo `schema` separado** para especificar el esquema sin ambigüedad.
 - **Detección automática de tipos de datos** para parámetros OUT (NUMBER, VARCHAR2).
@@ -126,6 +127,36 @@ Cada instancia se identifica de las siguientes maneras:
 - **Configuración independiente**: Cada instancia usa su propio .env
 - **Monitoreo centralizado**: Scripts para verificar estado y logs
 - **Gestión simplificada**: Detener/iniciar instancias específicas
+
+## 🎨 Frontend Web Integrado
+
+El microservicio incluye un frontend web moderno para probar y usar la API directamente desde el navegador.
+
+### Acceso al Frontend
+
+Una vez que el servidor esté ejecutándose, simplemente abre tu navegador en:
+```
+http://localhost:8080
+```
+
+### Características del Frontend
+
+- ✅ **Interfaz intuitiva**: Diseño moderno y fácil de usar
+- ✅ **Todos los endpoints**: Soporta todos los endpoints de la API
+- ✅ **Ejemplos integrados**: Ejemplos predefinidos para cada operación
+- ✅ **Sin instalación**: No requiere herramientas adicionales (curl, Postman, etc.)
+- ✅ **Configuración persistente**: Guarda la URL y el token en el navegador
+- ✅ **Respuestas formateadas**: Visualización clara de respuestas JSON
+
+### Uso Rápido
+
+1. Abre `http://localhost:8080` en tu navegador
+2. Ingresa tu `API_TOKEN` en la sección de configuración
+3. Selecciona un endpoint (ping, query, procedure, etc.)
+4. Configura los parámetros necesarios
+5. Haz clic en "Enviar petición" y ve los resultados
+
+Ver [static/README.md](static/README.md) para más detalles.
 
 ## Endpoints disponibles
 

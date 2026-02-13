@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Oracle API - Test Frontend</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+
+        .config-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .endpoints-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .endpoint-card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .endpoint-card:hover {
+            border-color: #667eea;
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .endpoint-card.active {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .endpoint-method {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .method-get {
+            background: #4caf50;
+            color: white;
+        }
+
+        .method-post {
+            background: #2196f3;
+            color: white;
+        }
+
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .endpoint-description {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .request-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .request-section.active {
+            display: block;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .response-section {
+            margin-top: 30px;
+        }
+
+        .response-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .response-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .example-btn {
+            background: #17a2b8;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .example-btn:hover {
+            background: #138496;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 Go Oracle API</h1>
+            <p>Interfaz de prueba para endpoints de la API</p>
+        </div>
+
+        <div class="content">
+            <!-- Configuration Section -->
+            <div class="config-section">
+                <h2>⚙️ Configuración</h2>
+                <div class="form-group">
+                    <label for="apiUrl">URL de la API:</label>
+                    <input type="text" id="apiUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+                </div>
+                <div class="form-group">
+                    <label for="apiToken">Token de autorización:</label>
+                    <input type="password" id="apiToken" placeholder="Ingresa tu API_TOKEN aquí">
+                </div>
+            </div>
+
+            <!-- Endpoints Grid -->
+            <h2 style="color: #667eea; margin-bottom: 20px;">📡 Endpoints disponibles</h2>
+            <div class="endpoints-grid">
+                <div class="endpoint-card" data-endpoint="ping">
+                    <span class="endpoint-method method-get">GET</span>
+                    <div class="endpoint-path">/ping</div>
+                    <div class="endpoint-description">Verificar conectividad con Oracle</div>
+                </div>
+
+                <div class="endpoint-card" data-endpoint="query">
+                    <span class="endpoint-method method-post">POST</span>
+                    <div class="endpoint-path">/query</div>
+                    <div class="endpoint-description">Ejecutar consultas SELECT</div>
+                </div>
+
+                <div class="endpoint-card" data-endpoint="exec">
+                    <span class="endpoint-method method-post">POST</span>
+                    <div class="endpoint-path">/exec</div>
+                    <div class="endpoint-description">Ejecutar INSERT, UPDATE, DELETE, DDL</div>
+                </div>
+
+                <div class="endpoint-card" data-endpoint="procedure">
+                    <span class="endpoint-method method-post">POST</span>
+                    <div class="endpoint-path">/procedure</div>
+                    <div class="endpoint-description">Ejecutar procedimientos/funciones</div>
+                </div>
+
+                <div class="endpoint-card" data-endpoint="async">
+                    <span class="endpoint-method method-post">POST</span>
+                    <div class="endpoint-path">/procedure/async</div>
+                    <div class="endpoint-description">Ejecutar procedimientos asíncronos</div>
+                </div>
+
+                <div class="endpoint-card" data-endpoint="jobs">
+                    <span class="endpoint-method method-get">GET</span>
+                    <div class="endpoint-path">/jobs</div>
+                    <div class="endpoint-description">Listar jobs asíncronos</div>
+                </div>
+            </div>
+
+            <!-- Request Section -->
+            <div id="requestSection" class="request-section">
+                <h3 id="requestTitle">Configuración de la petición</h3>
+                <div id="requestForm"></div>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="sendRequest()">
+                        <span id="btnText">Enviar petición</span>
+                        <span id="btnLoading" class="loading hidden"></span>
+                    </button>
+                    <button class="btn-secondary" onclick="clearResponse()">Limpiar respuesta</button>
+                </div>
+            </div>
+
+            <!-- Response Section -->
+            <div id="responseSection" class="response-section hidden">
+                <h3>📥 Respuesta</h3>
+                <div id="statusBadge"></div>
+                <div class="response-box" id="responseBox"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentEndpoint = null;
+
+        // Endpoint configurations
+        const endpoints = {
+            ping: {
+                title: 'GET /ping',
+                method: 'GET',
+                form: ''
+            },
+            query: {
+                title: 'POST /query',
+                method: 'POST',
+                form: `
+                    <div class="form-group">
+                        <label for="queryText">Consulta SQL:</label>
+                        <textarea id="queryText" placeholder="SELECT * FROM dual">SELECT sysdate FROM dual</textarea>
+                        <button class="example-btn" onclick="loadExample('query', 'simple')">Ejemplo simple</button>
+                        <button class="example-btn" onclick="loadExample('query', 'multiline')">Ejemplo multilínea</button>
+                    </div>
+                `
+            },
+            exec: {
+                title: 'POST /exec',
+                method: 'POST',
+                form: `
+                    <div class="form-group">
+                        <label for="execText">Sentencia SQL:</label>
+                        <textarea id="execText" placeholder="INSERT INTO tabla VALUES (...)">CREATE TABLE test_tabla (id NUMBER)</textarea>
+                        <button class="example-btn" onclick="loadExample('exec', 'create')">Ejemplo CREATE TABLE</button>
+                        <button class="example-btn" onclick="loadExample('exec', 'insert')">Ejemplo INSERT</button>
+                    </div>
+                `
+            },
+            procedure: {
+                title: 'POST /procedure',
+                method: 'POST',
+                form: `
+                    <div class="form-group">
+                        <label for="procName">Nombre del procedimiento/función:</label>
+                        <input type="text" id="procName" placeholder="SCHEMA.PACKAGE.PROCEDURE_NAME">
+                    </div>
+                    <div class="form-group">
+                        <label for="procSchema">Schema (opcional):</label>
+                        <input type="text" id="procSchema" placeholder="WORKFLOW">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="isFunction"> Es una función (retorna valor)
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="procParams">Parámetros (JSON array):</label>
+                        <textarea id="procParams" placeholder='[{"name": "param1", "value": 123}, {"name": "resultado", "direction": "OUT"}]'>[]</textarea>
+                        <button class="example-btn" onclick="loadExample('procedure', 'simple')">Ejemplo simple</button>
+                        <button class="example-btn" onclick="loadExample('procedure', 'function')">Ejemplo función</button>
+                    </div>
+                `
+            },
+            async: {
+                title: 'POST /procedure/async',
+                method: 'POST',
+                form: `
+                    <div class="form-group">
+                        <label for="asyncProcName">Nombre del procedimiento:</label>
+                        <input type="text" id="asyncProcName" placeholder="SCHEMA.PACKAGE.PROCEDURE_NAME">
+                    </div>
+                    <div class="form-group">
+                        <label for="asyncParams">Parámetros (JSON array):</label>
+                        <textarea id="asyncParams" placeholder='[{"name": "param1", "value": 123}]'>[]</textarea>
+                        <button class="example-btn" onclick="loadExample('async', 'example')">Ejemplo</button>
+                    </div>
+                `
+            },
+            jobs: {
+                title: 'GET /jobs',
+                method: 'GET',
+                form: '<p style="color: #666;">Este endpoint lista todos los jobs asíncronos activos.</p>'
+            }
+        };
+
+        // Examples
+        const examples = {
+            query: {
+                simple: 'SELECT sysdate FROM dual',
+                multiline: `SELECT 
+    campo1, 
+    campo2, 
+    campo3
+FROM mi_tabla
+WHERE condicion = 'valor'
+ORDER BY campo1`
+            },
+            exec: {
+                create: 'CREATE TABLE test_tabla (id NUMBER, nombre VARCHAR2(100))',
+                insert: "INSERT INTO test_tabla (id, nombre) VALUES (1, 'Test')"
+            },
+            procedure: {
+                simple: JSON.stringify([
+                    { name: "a", value: 5, direction: "IN" },
+                    { name: "b", value: 7, direction: "IN" },
+                    { name: "resultado", direction: "OUT", type: "number" }
+                ], null, 2),
+                function: JSON.stringify([
+                    { name: "vDNI", value: 12345678 },
+                    { name: "resultado", direction: "OUT", type: "string" }
+                ], null, 2)
+            },
+            async: {
+                example: JSON.stringify([
+                    { name: "vPERIODO", value: "2025-09-16" },
+                    { name: "vIDTIPOLIQ", value: 1 }
+                ], null, 2)
+            }
+        };
+
+        function loadExample(endpoint, exampleName) {
+            const example = examples[endpoint][exampleName];
+            if (endpoint === 'query') {
+                document.getElementById('queryText').value = example;
+            } else if (endpoint === 'exec') {
+                document.getElementById('execText').value = example;
+            } else if (endpoint === 'procedure') {
+                document.getElementById('procParams').value = example;
+            } else if (endpoint === 'async') {
+                document.getElementById('asyncParams').value = example;
+            }
+        }
+
+        // Card click handler
+        document.querySelectorAll('.endpoint-card').forEach(card => {
+            card.addEventListener('click', function() {
+                const endpoint = this.dataset.endpoint;
+                selectEndpoint(endpoint);
+            });
+        });
+
+        function selectEndpoint(endpoint) {
+            // Update active card
+            document.querySelectorAll('.endpoint-card').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[data-endpoint="${endpoint}"]`).classList.add('active');
+
+            // Update request section
+            currentEndpoint = endpoint;
+            const config = endpoints[endpoint];
+            document.getElementById('requestTitle').textContent = config.title;
+            document.getElementById('requestForm').innerHTML = config.form;
+            document.getElementById('requestSection').classList.add('active');
+            
+            // Hide response
+            document.getElementById('responseSection').classList.add('hidden');
+        }
+
+        async function sendRequest() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const apiToken = document.getElementById('apiToken').value.trim();
+
+            if (!apiToken) {
+                alert('Por favor ingresa el token de autorización');
+                return;
+            }
+
+            if (!currentEndpoint) {
+                alert('Por favor selecciona un endpoint');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('btnText').classList.add('hidden');
+            document.getElementById('btnLoading').classList.remove('hidden');
+
+            try {
+                const config = endpoints[currentEndpoint];
+                const url = `${apiUrl}${getEndpointPath(currentEndpoint)}`;
+                const headers = {
+                    'Authorization': `Bearer ${apiToken}`,
+                    'Content-Type': 'application/json'
+                };
+
+                let requestOptions = {
+                    method: config.method,
+                    headers: headers
+                };
+
+                // Build request body for POST requests
+                if (config.method === 'POST') {
+                    requestOptions.body = JSON.stringify(buildRequestBody(currentEndpoint));
+                }
+
+                const response = await fetch(url, requestOptions);
+                const data = await response.json();
+
+                displayResponse(response.status, data);
+            } catch (error) {
+                displayResponse(0, { error: error.message });
+            } finally {
+                // Hide loading
+                document.getElementById('btnText').classList.remove('hidden');
+                document.getElementById('btnLoading').classList.add('hidden');
+            }
+        }
+
+        function getEndpointPath(endpoint) {
+            const paths = {
+                ping: '/ping',
+                query: '/query',
+                exec: '/exec',
+                procedure: '/procedure',
+                async: '/procedure/async',
+                jobs: '/jobs'
+            };
+            return paths[endpoint];
+        }
+
+        function buildRequestBody(endpoint) {
+            switch (endpoint) {
+                case 'query':
+                    return { query: document.getElementById('queryText').value };
+                
+                case 'exec':
+                    return { query: document.getElementById('execText').value };
+                
+                case 'procedure':
+                    const body = {
+                        name: document.getElementById('procName').value,
+                        isFunction: document.getElementById('isFunction').checked,
+                        params: JSON.parse(document.getElementById('procParams').value || '[]')
+                    };
+                    const schema = document.getElementById('procSchema').value.trim();
+                    if (schema) {
+                        body.schema = schema;
+                    }
+                    return body;
+                
+                case 'async':
+                    return {
+                        name: document.getElementById('asyncProcName').value,
+                        params: JSON.parse(document.getElementById('asyncParams').value || '[]')
+                    };
+                
+                default:
+                    return {};
+            }
+        }
+
+        function displayResponse(status, data) {
+            const responseSection = document.getElementById('responseSection');
+            const statusBadge = document.getElementById('statusBadge');
+            const responseBox = document.getElementById('responseBox');
+
+            responseSection.classList.remove('hidden');
+
+            // Status badge
+            const isSuccess = status >= 200 && status < 300;
+            statusBadge.className = `status-badge ${isSuccess ? 'status-success' : 'status-error'}`;
+            statusBadge.textContent = `HTTP ${status} - ${isSuccess ? 'Success' : 'Error'}`;
+
+            // Response content
+            responseBox.textContent = JSON.stringify(data, null, 2);
+            responseBox.scrollTop = 0;
+        }
+
+        function clearResponse() {
+            document.getElementById('responseSection').classList.add('hidden');
+            document.getElementById('responseBox').textContent = '';
+        }
+
+        // Load saved configuration
+        window.addEventListener('load', function() {
+            const savedUrl = localStorage.getItem('apiUrl');
+            const savedToken = localStorage.getItem('apiToken');
+            
+            if (savedUrl) document.getElementById('apiUrl').value = savedUrl;
+            if (savedToken) document.getElementById('apiToken').value = savedToken;
+        });
+
+        // Save configuration on change
+        document.getElementById('apiUrl').addEventListener('change', function() {
+            localStorage.setItem('apiUrl', this.value);
+        });
+
+        document.getElementById('apiToken').addEventListener('change', function() {
+            localStorage.setItem('apiToken', this.value);
+        });
+    </script>
+</body>
+</html>
