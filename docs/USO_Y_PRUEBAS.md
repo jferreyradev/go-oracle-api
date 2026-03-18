@@ -96,6 +96,33 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
 }
 ```
 
+#### Ejemplo 2c: Función standalone que retorna DATE
+
+Usa `"type": "date"` en el parámetro OUT de retorno. La fecha se devuelve en formato `DD-MM-YYYY`.
+
+```bash
+curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: application/json" \
+  -d '{
+    "name": "F_ACTIVO",
+    "isFunction": true,
+    "params": [
+      { "name": "resultado", "direction": "OUT", "type": "date" }
+    ]
+  }' http://localhost:8080/procedure
+```
+
+**Respuesta esperada:**
+```json
+{
+  "status": "ok",
+  "out": {
+    "resultado": "18-03-2026"
+  }
+}
+```
+
+> **Nota:** Sin `"type": "date"`, Oracle intenta convertir un `DATE` a string o número y lanza `ORA-06502` (error 500). Siempre especificá `"type": "date"` para parámetros OUT que retornen fechas.
+
 **⚠️ Conflictos de nomenclatura Oracle:**
 
 Cuando un PACKAGE y un SCHEMA/USER tienen el mismo nombre, Oracle siempre interpreta `NOMBRE.FUNCION` como `PACKAGE.FUNCION`, no como `SCHEMA.FUNCION`. Ejemplo:
@@ -153,9 +180,9 @@ curl -X POST -H "Authorization: Bearer <API_TOKEN>" -H "Content-Type: applicatio
 - Se detecta automáticamente por el valor JSON: `"texto"` → string, `123` → number
 - Las fechas se convierten automáticamente si el nombre contiene `fecha` o `periodo`
 
-**Para parámetros OUT (basándose en el nombre):**
-- **Numéricos:** nombres que contengan `resultado`, `result`, `total`, `count`, `suma`, `num`, `int`, `id`
-- **Fechas:** nombres que contengan `fecha`, `periodo`  
+**Para parámetros OUT (basándose en `type` explícito o nombre):**
+- **Fechas:** `type: "date"` → retorna string `DD-MM-YYYY` (ej: `"18-03-2026"`)
+- **Numéricos:** `type: "number"`, o nombres que contengan `resultado`, `result`, `total`, `count`, `suma`, `num`, `int`, `id`
 - **Strings:** todos los demás casos
 
 #### Buffer mejorado
