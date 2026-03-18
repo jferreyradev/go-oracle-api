@@ -1128,6 +1128,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	outIndexes := make(map[int]string)
 	outBuffers := make(map[int]*string)
 	outNumMap := make(map[int]*sql.NullFloat64)
+	outDateMap := make(map[int]*sql.NullTime)
 
 	// Si es función, el primer OUT es el valor de retorno
 	if req.IsFunction {
@@ -1147,7 +1148,12 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		// Agregar el OUT de retorno como primer parámetro
 		p := req.Params[retIndex]
 		placeholders = append(placeholders, ":1")
-		if strings.Contains(strings.ToLower(p.Name), "resultado") || strings.Contains(strings.ToLower(p.Name), "total") || strings.Contains(strings.ToLower(p.Name), "count") || strings.Contains(strings.ToLower(p.Name), "suma") || strings.Contains(strings.ToLower(p.Name), "num") {
+		if strings.ToLower(p.Type) == "date" {
+			var outDate sql.NullTime
+			args = append(args, sql.Out{Dest: &outDate, In: false})
+			outIndexes[0] = p.Name
+			outDateMap[0] = &outDate
+		} else if strings.ToLower(p.Type) == "number" || strings.Contains(strings.ToLower(p.Name), "resultado") || strings.Contains(strings.ToLower(p.Name), "total") || strings.Contains(strings.ToLower(p.Name), "count") || strings.Contains(strings.ToLower(p.Name), "suma") || strings.Contains(strings.ToLower(p.Name), "num") {
 			var outNum sql.NullFloat64
 			args = append(args, sql.Out{Dest: &outNum, In: false})
 			outIndexes[0] = p.Name
@@ -1168,13 +1174,19 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.ToUpper(p.Direction) == "OUT" {
 				lowerName := strings.ToLower(p.Name)
 				// Verificar tipo explícito o inferir por nombre
+				isDate := strings.ToLower(p.Type) == "date"
 				isNumeric := strings.ToLower(p.Type) == "number" ||
 					strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
 					strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
 					strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
 					strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
 
-				if isNumeric {
+				if isDate {
+					var outDate sql.NullTime
+					args = append(args, sql.Out{Dest: &outDate, In: false})
+					outIndexes[paramPos-1] = p.Name
+					outDateMap[paramPos-1] = &outDate
+				} else if isNumeric {
 					var outNum sql.NullFloat64
 					args = append(args, sql.Out{Dest: &outNum, In: false})
 					outIndexes[paramPos-1] = p.Name
@@ -1231,6 +1243,14 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 		out := make(map[string]interface{})
 		for i, name := range outIndexes {
+			if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
+				if datePtr.Valid {
+					out[name] = datePtr.Time.Format("02-01-2006")
+				} else {
+					out[name] = nil
+				}
+				continue
+			}
 			if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
 				if numPtr.Valid {
 					out[name] = numPtr.Float64
@@ -1254,13 +1274,19 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.ToUpper(p.Direction) == "OUT" {
 			lowerName := strings.ToLower(p.Name)
 			// Verificar tipo explícito o inferir por nombre
+			isDate := strings.ToLower(p.Type) == "date"
 			isNumeric := strings.ToLower(p.Type) == "number" ||
 				strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
 				strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
 				strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
 				strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
 
-			if isNumeric {
+			if isDate {
+				var outDate sql.NullTime
+				args = append(args, sql.Out{Dest: &outDate, In: false})
+				outIndexes[outParamIndex] = p.Name
+				outDateMap[outParamIndex] = &outDate
+			} else if isNumeric {
 				var outNum sql.NullFloat64
 				args = append(args, sql.Out{Dest: &outNum, In: false})
 				outIndexes[outParamIndex] = p.Name
@@ -1355,6 +1381,14 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 
 	out := make(map[string]interface{})
 	for i, name := range outIndexes {
+		if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
+			if datePtr.Valid {
+				out[name] = datePtr.Time.Format("02-01-2006")
+			} else {
+				out[name] = nil
+			}
+			continue
+		}
 		if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
 			if numPtr.Valid {
 				out[name] = numPtr.Float64
@@ -1469,6 +1503,7 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 		outIndexes := []string{}
 		outBuffers := make(map[int]*string)
 		outNumMap := make(map[int]*sql.NullFloat64)
+		outDateMap := make(map[int]*sql.NullTime)
 
 		if req.IsFunction {
 			outIdx := 0
@@ -1485,24 +1520,31 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 				outIdx := len(outIndexes)
 				placeholders = append(placeholders, fmt.Sprintf(":%d", len(placeholders)+1))
 
-				// Detección automática de tipo
+				// Verificar tipo explícito o inferir por nombre
 				pType := strings.ToLower(p.Type)
 				pNameLower := strings.ToLower(p.Name)
+				isDate := pType == "date"
 				isNumber := false
 
-				if pType == "number" || pType == "integer" || pType == "float" {
-					isNumber = true
-				} else if pType == "" {
-					numberKeywords := []string{"resultado", "result", "total", "count", "suma", "num", "int", "id"}
-					for _, kw := range numberKeywords {
-						if strings.Contains(pNameLower, kw) {
-							isNumber = true
-							break
+				if !isDate {
+					if pType == "number" || pType == "integer" || pType == "float" {
+						isNumber = true
+					} else if pType == "" {
+						numberKeywords := []string{"resultado", "result", "total", "count", "suma", "num", "int", "id"}
+						for _, kw := range numberKeywords {
+							if strings.Contains(pNameLower, kw) {
+								isNumber = true
+								break
+							}
 						}
 					}
 				}
 
-				if isNumber {
+				if isDate {
+					datePtr := new(sql.NullTime)
+					outDateMap[outIdx] = datePtr
+					args = append(args, sql.Out{Dest: datePtr})
+				} else if isNumber {
 					numPtr := new(sql.NullFloat64)
 					outNumMap[outIdx] = numPtr
 					args = append(args, sql.Out{Dest: numPtr})
@@ -1599,6 +1641,14 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 		// Recopilar resultados OUT
 		out := make(map[string]interface{})
 		for i, name := range outIndexes {
+			if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
+				if datePtr.Valid {
+					out[name] = datePtr.Time.Format("02-01-2006")
+				} else {
+					out[name] = nil
+				}
+				continue
+			}
 			if numPtr, ok := outNumMap[i]; ok && numPtr != nil {
 				if numPtr.Valid {
 					out[name] = numPtr.Float64

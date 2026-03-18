@@ -11,6 +11,7 @@
  *   - ping: Conectividad básica
  *   - query: Ejecución de queries SQL
  *   - procedure: Procedimientos almacenados
+ *   - functiondate: Función standalone que retorna DATE (formato DD-MM-YYYY)
  *   - async: Jobs asíncronos
  *   - jobs: Gestión de jobs
  *   - exec: Ejecución DDL/DML
@@ -195,6 +196,63 @@ async function testProcedure() {
     return execProc.ok;
 }
 
+/**
+ * TEST: Función standalone que retorna DATE
+ * Verifica:
+ * - Creación de una función que retorna DATE
+ * - Ejecución vía /procedure con type:"date" en el parámetro OUT
+ * - Que la respuesta JSON contiene la fecha en formato DD-MM-YYYY
+ */
+async function testFunctionDate() {
+    section("Test: Función que retorna DATE");
+
+    // Crear función temporal que retorna SYSDATE
+    const createFunc = await request('POST', '/exec', {
+        query: `CREATE OR REPLACE FUNCTION TEST_FUNC_DATE_TEMP RETURN DATE AS
+                BEGIN
+                    RETURN SYSDATE;
+                END TEST_FUNC_DATE_TEMP;`
+    });
+
+    if (!createFunc.ok) {
+        log("No se pudo crear la función de fecha temporal", 'warn');
+        return false;
+    }
+    log("Función de fecha temporal creada", 'info');
+
+    // Ejecutar función con parámetro OUT de tipo date
+    const execFunc = await request('POST', '/procedure', {
+        name: 'TEST_FUNC_DATE_TEMP',
+        isFunction: true,
+        params: [
+            { name: 'resultado', direction: 'OUT', type: 'date' }
+        ]
+    });
+
+    let passed = false;
+    if (execFunc.ok && execFunc.data.out && execFunc.data.out.resultado) {
+        const fechaOut = execFunc.data.out.resultado;
+        // Verificar formato DD-MM-YYYY (ej: "18-03-2026")
+        const ddmmyyyy = /^\d{2}-\d{2}-\d{4}$/.test(fechaOut);
+        if (ddmmyyyy) {
+            log(`Función retornó fecha en formato correcto: ${fechaOut}`, 'success');
+            passed = true;
+        } else {
+            log(`Formato de fecha incorrecto: ${fechaOut} (esperado DD-MM-YYYY)`, 'error');
+        }
+    } else {
+        log(`Error ejecutando función DATE: ${JSON.stringify(execFunc.data)}`, 'error');
+    }
+
+    // Limpiar: Eliminar función temporal
+    await request('POST', '/exec', {
+        query: 'DROP FUNCTION TEST_FUNC_DATE_TEMP'
+    });
+    log("Función de fecha temporal eliminada", 'info');
+
+    return passed;
+}
+
 async function testAsyncJobs() {
     section("Test: Jobs Asíncronos");
     
@@ -359,6 +417,7 @@ async function runTests(filter = null) {
         ping: testPing,
         query: testQuery,
         procedure: testProcedure,
+        functiondate: testFunctionDate,
         async: testAsyncJobs,
         jobs: testJobsManagement,
         exec: testExec,
