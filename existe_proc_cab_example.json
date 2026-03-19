@@ -1,0 +1,19 @@
+{
+  "name": "EXISTE_PROC_CAB",
+  "schema": "WORKFLOW",
+  "isFunction": true,
+  "params": [
+    {
+      "name": "vIDGRUPOREP",
+      "value": 2,
+      "direction": "IN",
+      "type": "integer"
+    },
+    {
+      "name": "vID_PROC_CAB",
+      "value": 123,
+      "direction": "IN",
+      "type": "integer"
+    }
+  ]
+}

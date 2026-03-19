@@ -1,0 +1,37 @@
+{
+  "name": "EXISTE_EJEC_CAB",
+  "schema": "WORKFLOW",
+  "isFunction": true,
+  "params": [
+    {
+      "name": "vID_PROC_CAB",
+      "value": 123,
+      "direction": "IN",
+      "type": "integer"
+    },
+    {
+      "name": "vPERIODO",
+      "value": "2026-03-19",
+      "direction": "IN",
+      "type": "date"
+    },
+    {
+      "name": "vTIPOLIQ",
+      "value": 1,
+      "direction": "IN",
+      "type": "integer"
+    },
+    {
+      "name": "vGRUPOADIC",
+      "value": 5,
+      "direction": "IN",
+      "type": "integer"
+    },
+    {
+      "name": "vGRUPOREP",
+      "value": 2,
+      "direction": "IN",
+      "type": "integer"
+    }
+  ]
+}
