@@ -1,0 +1,36 @@
+{
+  "name": "EXISTE_EJEC_CAB",
+  "isFunction": true,
+  "params": [
+    {
+      "name": "vID_PROC_CAB",
+      "value": 5,
+      "direction": "IN"
+    },
+    {
+      "name": "vPERIODO",
+      "value": "01/01/2026",
+      "direction": "IN"
+    },
+    {
+      "name": "vTIPOLIQ",
+      "value": 1,
+      "direction": "IN"
+    },
+    {
+      "name": "vGRUPOADIC",
+      "value": 0,
+      "direction": "IN"
+    },
+    {
+      "name": "vGRUPOREP",
+      "value": 9,
+      "direction": "IN"
+    },
+    {
+      "name": "result",
+      "direction": "OUT",
+      "type": "number"
+    }
+  ]
+}

@@ -182,8 +182,7 @@ func parseDateParam(value interface{}) (time.Time, error) {
 		return timeVal, nil
 	}
 	if s, ok := value.(string); ok {
-		layouts := []string{"2006-01-02", "02/01/2006", "02-01-2006", "2006/01/02"}
-		for _, layout := range layouts {
+		for _, layout := range getDateInputFormats() {
 			if parsedTime, err := time.Parse(layout, s); err == nil {
 				return parsedTime, nil
 			}
@@ -192,14 +191,46 @@ func parseDateParam(value interface{}) (time.Time, error) {
 	return t, fmt.Errorf("no se pudo parsear fecha")
 }
 
-// setupLogFileName genera nombre de archivo de log
+// setupLogFileName genera nombre de archivo de log con estructura: log/{instanceName}/{YYYY-MM-DD}/{instanceName}_{port}_{timestamp}.log
+// Crea las carpetas necesarias automáticamente
 func setupLogFileName(instanceName, port string) string {
-	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	instName := instanceName
+	now := time.Now()
+	timestamp := now.Format("2006-01-02_15-04-05")
+	dateFolder := now.Format("2006-01-02")
+
+	var baseName string
 	if strings.ToLower(instanceName) == "auto" {
-		instName = "inst-auto"
+		baseName = "auto"
+	} else {
+		baseName = instanceName
 	}
-	return fmt.Sprintf("log/go-oracle-api__inst-%s__port-%s__%s.log", instName, port, timestamp)
+
+	// Crear estructura de carpetas: log/{baseName}/{dateFolder}/
+	logDir := fmt.Sprintf("log/%s/%s", baseName, dateFolder)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		// Usar fmt.Println porque log aún no está configurado
+		fmt.Fprintf(os.Stderr, "⚠️  Error creando directorio de logs %s: %v\n", logDir, err)
+	}
+
+	// Nombre representativo: {INSTANCIA}_{PUERTO}_{timestamp}.log
+	return fmt.Sprintf("%s/%s_%s_%s.log", logDir, baseName, port, timestamp)
+}
+
+// formatDateOutput formatea fecha para salida (DD/MM/YYYY)
+func formatDateOutput(t time.Time) string {
+	return t.Format("02/01/2006")
+}
+
+// getDateInputFormats retorna formatos soportados para entrada
+func getDateInputFormats() []string {
+	return []string{
+		"2006-01-02",
+		"02/01/2006",
+		"02-01-2006",
+		"2006/01/02",
+		"01-02-2006",
+		"01/02/2006",
+	}
 }
 
 // DeleteJob elimina un job espec├¡fico por ID (memoria y BD)
@@ -727,8 +758,9 @@ Para m├ís informaci├│n consulta:
 	}
 
 	// ===============================
-	// 2. Configuraci├│n de logging e identificaci├│n de instancia
+	// 2. Carga de configuración (primero para determinar puerto correcto)
 	// ===============================
+	cfg := loadConfig()
 
 	// Determinar nombre de instancia
 	instanceName = "auto"
@@ -738,27 +770,19 @@ Para m├ís informaci├│n consulta:
 		instanceName = customInstance
 	}
 
-	// Crear carpeta log si no existe
-	if _, err := os.Stat("log"); os.IsNotExist(err) {
-		if err := os.Mkdir("log", 0755); err != nil {
-			log.Printf("ÔÜá´©Å  No se pudo crear carpeta log: %v", err)
-		}
-	}
+	// Generar nombre de log con estructura jerárquica (usando puerto correcto de config)
+	logFileName = setupLogFileName(instanceName, cfg.ListenPort)
+	fmt.Printf("📝 Archivo de log: %s\n", logFileName)
 
-	// Generar nombre de log ├║nico por instancia
-	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	if instanceName != "auto" {
-		logFileName = fmt.Sprintf("log/%s_%s.log", instanceName, timestamp)
-	} else {
-		logFileName = "log/app-" + timestamp + ".log"
-	}
 	logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
 		defer logFile.Close()  // Cerrar el archivo al finalizar
 		log.SetOutput(logFile) // Solo archivo, no consola
+		fmt.Printf("✅ Log configurado correctamente\n\n")
 	} else {
 		log.SetOutput(os.Stdout)
-		log.Printf("No se pudo abrir %s para logging: %v", logFileName, err)
+		fmt.Fprintf(os.Stderr, "❌ No se pudo abrir %s para logging: %v\n", logFileName, err)
+		fmt.Fprintf(os.Stderr, "Los logs se escribirán en consola\n\n")
 	}
 
 	// ===============================
@@ -776,12 +800,8 @@ Para m├ís informaci├│n consulta:
 	http.HandleFunc("/jobs/", logRequest(authMiddleware(jobsHandler))) // /jobs/{id} y /jobs
 
 	// ===============================
-	// 4. Carga de configuraci├│n y conexi├│n a Oracle
+	// 4. Conexión a Oracle
 	// ===============================
-	cfg := loadConfig()
-
-	fmt.Println("==============================")
-	fmt.Println("Intentando conectar a Oracle...")
 	fmt.Printf("Host: %s:%s\n", cfg.OracleHost, cfg.OraclePort)
 	fmt.Printf("Servicio: %s\n", cfg.OracleService)
 	fmt.Printf("Usuario: %s\n", cfg.OracleUser)
@@ -1225,7 +1245,23 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 					outBuffers[paramPos-1] = &outStr
 				}
 			} else {
-				args = append(args, p.Value)
+				// Parámetro IN: verificar si es fecha
+				pTypeLower := strings.ToLower(p.Type)
+				pNameLower := strings.ToLower(p.Name)
+				isDateType := pTypeLower == "date"
+				isDateName := strings.Contains(pNameLower, "fecha") || strings.Contains(pNameLower, "periodo")
+
+				if isDateType || isDateName {
+					// Intentar parsear como fecha
+					if parsedTime, err := parseDateParam(p.Value); err == nil {
+						args = append(args, parsedTime)
+					} else {
+						log.Printf("[PROCEDURE] Advertencia al parsear fecha en parámetro '%s': %v", p.Name, err)
+						args = append(args, p.Value)
+					}
+				} else {
+					args = append(args, p.Value)
+				}
 			}
 			paramPos++
 		}
@@ -1272,7 +1308,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		for i, name := range outIndexes {
 			if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
 				if datePtr.Valid {
-					out[name] = datePtr.Time.Format("02-01-2006")
+					out[name] = formatDateOutput(datePtr.Time)
 				} else {
 					out[name] = nil
 				}
@@ -1411,7 +1447,7 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	for i, name := range outIndexes {
 		if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
 			if datePtr.Valid {
-				out[name] = datePtr.Time.Format("02-01-2006")
+				out[name] = formatDateOutput(datePtr.Time)
 			} else {
 				out[name] = nil
 			}
@@ -1673,7 +1709,7 @@ func asyncProcedureHandler(w http.ResponseWriter, r *http.Request) {
 		for i, name := range outIndexes {
 			if datePtr, ok := outDateMap[i]; ok && datePtr != nil {
 				if datePtr.Valid {
-					out[name] = datePtr.Time.Format("02-01-2006")
+					out[name] = formatDateOutput(datePtr.Time)
 				} else {
 					out[name] = nil
 				}
