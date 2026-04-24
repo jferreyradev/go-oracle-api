@@ -1177,9 +1177,9 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 	outNumMap := make(map[int]*sql.NullFloat64)
 	outDateMap := make(map[int]*sql.NullTime)
 
-	// Si es funci├│n, el primer OUT es el valor de retorno
+	// Si es función, el primer OUT es el valor de retorno
 	if req.IsFunction {
-		// Buscar el primer par├ímetro OUT (valor de retorno)
+		// Buscar el primer parámetro OUT (valor de retorno)
 		retIndex := -1
 		for i, p := range req.Params {
 			if strings.ToUpper(p.Direction) == "OUT" {
@@ -1189,38 +1189,43 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if retIndex == -1 {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Debe incluir un par├ímetro OUT para el valor de retorno"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Debe incluir un parámetro OUT para el valor de retorno"})
 			return
 		}
-		// Agregar el OUT de retorno como primer par├ímetro
+
+		// PASO 1: Preasignar buffers para OUT parámetros en funciones
+		functionOutBuffers := make([]*string, 0)
+		functionOutNums := make([]*sql.NullFloat64, 0)
+		functionOutDates := make([]*sql.NullTime, 0)
+		functionOutIndex := 0
+
+		// Retorno de función (primer OUT)
 		p := req.Params[retIndex]
-		placeholders = append(placeholders, ":1")
 		if strings.ToLower(p.Type) == "date" {
-			var outDate sql.NullTime
-			args = append(args, sql.Out{Dest: &outDate, In: false})
+			outDate := sql.NullTime{}
+			functionOutDates = append(functionOutDates, &outDate)
 			outIndexes[0] = p.Name
 			outDateMap[0] = &outDate
 		} else if strings.ToLower(p.Type) == "number" || strings.Contains(strings.ToLower(p.Name), "resultado") || strings.Contains(strings.ToLower(p.Name), "total") || strings.Contains(strings.ToLower(p.Name), "count") || strings.Contains(strings.ToLower(p.Name), "suma") || strings.Contains(strings.ToLower(p.Name), "num") {
-			var outNum sql.NullFloat64
-			args = append(args, sql.Out{Dest: &outNum, In: false})
+			outNum := sql.NullFloat64{}
+			functionOutNums = append(functionOutNums, &outNum)
 			outIndexes[0] = p.Name
 			outNumMap[0] = &outNum
 		} else {
-			outStr := ""
-			args = append(args, sql.Out{Dest: &outStr, In: false})
+			outStr := strings.Repeat(" ", 4000)
+			functionOutBuffers = append(functionOutBuffers, &outStr)
 			outIndexes[0] = p.Name
 			outBuffers[0] = &outStr
 		}
-		// Agregar el resto de par├ímetros (excepto el OUT de retorno)
-		paramPos := 2
+		functionOutIndex++
+
+		// Preasignar el resto de OUT parámetros
 		for i, p := range req.Params {
 			if i == retIndex {
 				continue
 			}
-			placeholders = append(placeholders, fmt.Sprintf(":%d", paramPos))
 			if strings.ToUpper(p.Direction) == "OUT" {
 				lowerName := strings.ToLower(p.Name)
-				// Verificar tipo expl├¡cito o inferir por nombre
 				isDate := strings.ToLower(p.Type) == "date"
 				isNumeric := strings.ToLower(p.Type) == "number" ||
 					strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
@@ -1229,21 +1234,63 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 					strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
 
 				if isDate {
-					var outDate sql.NullTime
-					args = append(args, sql.Out{Dest: &outDate, In: false})
-					outIndexes[paramPos-1] = p.Name
-					outDateMap[paramPos-1] = &outDate
+					outDate := sql.NullTime{}
+					functionOutDates = append(functionOutDates, &outDate)
+					outIndexes[functionOutIndex] = p.Name
+					outDateMap[functionOutIndex] = &outDate
 				} else if isNumeric {
-					var outNum sql.NullFloat64
-					args = append(args, sql.Out{Dest: &outNum, In: false})
-					outIndexes[paramPos-1] = p.Name
-					outNumMap[paramPos-1] = &outNum
+					outNum := sql.NullFloat64{}
+					functionOutNums = append(functionOutNums, &outNum)
+					outIndexes[functionOutIndex] = p.Name
+					outNumMap[functionOutIndex] = &outNum
 				} else {
-					outStr := strings.Repeat(" ", 4000) // Buffer de 4000 caracteres
-					args = append(args, sql.Out{Dest: &outStr, In: false})
-					outIndexes[paramPos-1] = p.Name
-					outBuffers[paramPos-1] = &outStr
+					outStr := strings.Repeat(" ", 4000)
+					functionOutBuffers = append(functionOutBuffers, &outStr)
+					outIndexes[functionOutIndex] = p.Name
+					outBuffers[functionOutIndex] = &outStr
 				}
+				functionOutIndex++
+			}
+		}
+
+		// PASO 2: Construir placeholders y argumentos para funciones
+		placeholders = append(placeholders, ":1")
+
+		// Retorno de función
+		p = req.Params[retIndex]
+		if strings.ToLower(p.Type) == "date" {
+			args = append(args, sql.Out{Dest: functionOutDates[0], In: false})
+		} else if strings.ToLower(p.Type) == "number" || strings.Contains(strings.ToLower(p.Name), "resultado") || strings.Contains(strings.ToLower(p.Name), "total") || strings.Contains(strings.ToLower(p.Name), "count") || strings.Contains(strings.ToLower(p.Name), "suma") || strings.Contains(strings.ToLower(p.Name), "num") {
+			args = append(args, sql.Out{Dest: functionOutNums[0], In: false})
+		} else {
+			args = append(args, sql.Out{Dest: functionOutBuffers[0], In: false})
+		}
+
+		// Resto de parámetros
+		paramPos := 2
+		functionOutIndex = 1
+		for i, p := range req.Params {
+			if i == retIndex {
+				continue
+			}
+			placeholders = append(placeholders, fmt.Sprintf(":%d", paramPos))
+			if strings.ToUpper(p.Direction) == "OUT" {
+				lowerName := strings.ToLower(p.Name)
+				isDate := strings.ToLower(p.Type) == "date"
+				isNumeric := strings.ToLower(p.Type) == "number" ||
+					strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
+					strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
+					strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
+					strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
+
+				if isDate {
+					args = append(args, sql.Out{Dest: functionOutDates[functionOutIndex], In: false})
+				} else if isNumeric {
+					args = append(args, sql.Out{Dest: functionOutNums[functionOutIndex], In: false})
+				} else {
+					args = append(args, sql.Out{Dest: functionOutBuffers[functionOutIndex], In: false})
+				}
+				functionOutIndex++
 			} else {
 				// Parámetro IN: verificar si es fecha
 				pTypeLower := strings.ToLower(p.Type)
@@ -1330,13 +1377,17 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Procedimiento normal (no funci├│n)
-	outParamIndex := 0 // Contador para rastrear ├¡ndice de par├ímetros OUT
-	for i, p := range req.Params {
-		placeholders = append(placeholders, fmt.Sprintf(":%d", i+1))
+	// Procedimiento normal (no función)
+	// PASO 1: Preasignar buffers para OUT parámetros
+	// Esto evita que las variables locales pierdan scope después del loop
+	outParamIndex := 0
+	outBuffersArray := make([]*string, 0)
+	outNumsArray := make([]*sql.NullFloat64, 0)
+	outDatesArray := make([]*sql.NullTime, 0)
+
+	for _, p := range req.Params {
 		if strings.ToUpper(p.Direction) == "OUT" {
 			lowerName := strings.ToLower(p.Name)
-			// Verificar tipo expl├¡cito o inferir por nombre
 			isDate := strings.ToLower(p.Type) == "date"
 			isNumeric := strings.ToLower(p.Type) == "number" ||
 				strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
@@ -1345,22 +1396,46 @@ func procedureHandler(w http.ResponseWriter, r *http.Request) {
 				strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
 
 			if isDate {
-				var outDate sql.NullTime
-				args = append(args, sql.Out{Dest: &outDate, In: false})
+				outDate := sql.NullTime{}
+				outDatesArray = append(outDatesArray, &outDate)
 				outIndexes[outParamIndex] = p.Name
 				outDateMap[outParamIndex] = &outDate
 			} else if isNumeric {
-				var outNum sql.NullFloat64
-				args = append(args, sql.Out{Dest: &outNum, In: false})
+				outNum := sql.NullFloat64{}
+				outNumsArray = append(outNumsArray, &outNum)
 				outIndexes[outParamIndex] = p.Name
 				outNumMap[outParamIndex] = &outNum
 			} else {
-				outStr := strings.Repeat(" ", 4000) // Buffer de 4000 caracteres
-				args = append(args, sql.Out{Dest: &outStr, In: false})
+				outStr := strings.Repeat(" ", 4000)
+				outBuffersArray = append(outBuffersArray, &outStr)
 				outIndexes[outParamIndex] = p.Name
 				outBuffers[outParamIndex] = &outStr
 			}
-			outParamIndex++ // Incrementar ├¡ndice para el siguiente OUT
+			outParamIndex++
+		}
+	}
+
+	// PASO 2: Procesar parámetros y construir argumentos
+	outParamIndex = 0
+	for i, p := range req.Params {
+		placeholders = append(placeholders, fmt.Sprintf(":%d", i+1))
+		if strings.ToUpper(p.Direction) == "OUT" {
+			lowerName := strings.ToLower(p.Name)
+			isDate := strings.ToLower(p.Type) == "date"
+			isNumeric := strings.ToLower(p.Type) == "number" ||
+				strings.Contains(lowerName, "resultado") || strings.Contains(lowerName, "result") ||
+				strings.Contains(lowerName, "total") || strings.Contains(lowerName, "count") ||
+				strings.Contains(lowerName, "suma") || strings.Contains(lowerName, "num") ||
+				strings.Contains(lowerName, "int") || strings.Contains(lowerName, "id")
+
+			if isDate {
+				args = append(args, sql.Out{Dest: outDatesArray[outParamIndex], In: false})
+			} else if isNumeric {
+				args = append(args, sql.Out{Dest: outNumsArray[outParamIndex], In: false})
+			} else {
+				args = append(args, sql.Out{Dest: outBuffersArray[outParamIndex], In: false})
+			}
+			outParamIndex++
 		} else {
 			// Verificar si es fecha por tipo explícito o por nombre
 			pTypeLower := strings.ToLower(p.Type)

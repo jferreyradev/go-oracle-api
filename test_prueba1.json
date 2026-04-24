@@ -1,0 +1,32 @@
+{
+  "name": "PRUEBA1",
+  "params": [
+    {
+      "name": "vIDPERS",
+      "value": 123,
+      "direction": "IN",
+      "type": "NUMBER"
+    },
+    {
+      "name": "vDNI",
+      "value": 45678901,
+      "direction": "IN",
+      "type": "NUMBER"
+    },
+    {
+      "name": "vSALIDA",
+      "direction": "OUT",
+      "type": "NUMBER"
+    },
+    {
+      "name": "vError",
+      "direction": "OUT",
+      "type": "NUMBER"
+    },
+    {
+      "name": "vErrorMsg",
+      "direction": "OUT",
+      "type": "STRING"
+    }
+  ]
+}
